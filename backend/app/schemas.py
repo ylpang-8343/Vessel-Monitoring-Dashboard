@@ -49,6 +49,7 @@ class VesselOut(BaseModel):
     imo_number: str
     destination_port: str | None
     created_at: datetime
+    archived_at: datetime | None = None
     current_location: str | None = None
     last_event_type: EventType | None = None
     last_event_text: str | None = None
@@ -94,3 +95,19 @@ class TrackingSourceOut(BaseModel):
     enabled: bool
 
     model_config = {"from_attributes": True}
+
+
+class TrackingSourceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    url: str = Field(min_length=1, max_length=255)
+    kind: str = "vessel"
+    adapter_key: str = "unavailable"
+    enabled: bool = False
+
+
+class TrackingSourceUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = None
+    kind: str | None = None
+    adapter_key: str | None = None
+    enabled: bool | None = None

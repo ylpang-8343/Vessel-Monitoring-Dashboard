@@ -15,6 +15,29 @@ def _clean_db():
 
 
 @pytest.fixture(autouse=True)
+def _seed_mock_source(_clean_db):
+    # run_tracking_poll() only polls when an enabled "mock" TrackingSource exists (Section
+    # 3.9 gating) - seed one by default so existing tracking-worker tests keep working;
+    # tests that specifically exercise the disabled case delete/disable it themselves.
+    from app.models import SourceKind, TrackingSource
+
+    db = SessionLocal()
+    try:
+        db.add(
+            TrackingSource(
+                name="Mock Tracking Feed",
+                url="internal://mock",
+                kind=SourceKind.VESSEL,
+                adapter_key="mock",
+                enabled=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.fixture(autouse=True)
 def _no_background_scheduler(monkeypatch):
     # Keep API tests deterministic: the real tracking worker runs on a background
     # thread against a live poll interval, which isn't relevant to these tests.

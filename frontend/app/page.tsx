@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import AddVesselModal from "./components/AddVesselModal";
 import VesselTable from "./components/VesselTable";
 import { ApiError, listVessels, Vessel } from "@/lib/api";
@@ -8,7 +9,10 @@ import { ApiError, listVessels, Vessel } from "@/lib/api";
 // Matches Figure 2's "Auto-refreshed every 5 minutes" caption.
 const DASHBOARD_REFRESH_MS = 5 * 60 * 1000;
 
+type View = "active" | "archived";
+
 export default function DashboardPage() {
+  const [view, setView] = useState<View>("active");
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +20,7 @@ export default function DashboardPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listVessels();
+      const data = await listVessels({ archived: view === "archived" });
       setVessels(data);
       setError(null);
     } catch (err) {
@@ -24,10 +28,11 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     void (async () => {
+      setLoading(true);
       await refresh();
     })();
     const interval = setInterval(() => refresh(), DASHBOARD_REFRESH_MS);
@@ -43,13 +48,30 @@ export default function DashboardPage() {
             <p className="text-xs text-white/70">Multi-Port Operations · Live View</p>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
+            <Link
+              href="/settings"
+              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
             >
-              + Add
-            </button>
+              Settings
+            </Link>
+            {view === "active" && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
+              >
+                + Add
+              </button>
+            )}
           </div>
+        </div>
+
+        <div className="flex gap-2 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <ViewTab active={view === "active"} onClick={() => setView("active")}>
+            Active
+          </ViewTab>
+          <ViewTab active={view === "archived"} onClick={() => setView("archived")}>
+            Archived
+          </ViewTab>
         </div>
 
         {error && (
@@ -65,10 +87,17 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-6 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-          <span>
-            Showing {vessels.length} monitored vessel{vessels.length === 1 ? "" : "s"} · Auto-refreshed every 5
-            minutes · Destination is optional, set per-vessel at registration
-          </span>
+          {view === "active" ? (
+            <span>
+              Showing {vessels.length} monitored vessel{vessels.length === 1 ? "" : "s"} · Auto-refreshed every 5
+              minutes · Destination is optional, set per-vessel at registration
+            </span>
+          ) : (
+            <span>
+              Showing {vessels.length} archived vessel{vessels.length === 1 ? "" : "s"} · History stays available
+              for reference · Archiving is one-way — re-register a vessel to resume tracking
+            </span>
+          )}
           <span>Click any vessel row to open its full movement history and timeline</span>
         </div>
       </div>
@@ -77,5 +106,20 @@ export default function DashboardPage() {
         <AddVesselModal onClose={() => setShowAddModal(false)} onImported={refresh} />
       )}
     </div>
+  );
+}
+
+function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+        active
+          ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
+          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

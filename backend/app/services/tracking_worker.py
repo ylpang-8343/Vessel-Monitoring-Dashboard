@@ -5,7 +5,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import settings
 from app.db import SessionLocal
-from app.models import StatusEvent, Vessel
+from app.models import StatusEvent, TrackingSource, Vessel
+from app.services.archive_worker import run_archive_sweep
 from app.services.status_engine import derive_event_type, format_last_event_text
 from app.sources.mock_adapter import MockAdapter
 
@@ -18,11 +19,30 @@ _scheduler: BackgroundScheduler | None = None
 def run_tracking_poll() -> int:
     """One polling cycle: fetch vessels, ask each enabled adapter for new reports,
     run them through the status engine, and persist new StatusEvent rows.
-    Only the mock adapter is wired up in Phase 1 (see Section 3.9 / plan for the
-    pluggable-adapter rationale)."""
+    Only the mock adapter is wired up so far (see Section 3.9 / plan for the
+    pluggable-adapter rationale) - gated on an enabled "mock" TrackingSource row so the
+    admin settings screen's enable/disable toggle actually pauses/resumes updates (3.9).
+    Archived vessels (3.7/3.8) are excluded. The arrived-at-destination retention sweep
+    (3.7) runs *before* polling, not after: polling always advances every active vessel by
+    one step (see mock_adapter.py), so if the sweep ran after polling it would never see a
+    vessel still sitting at ARRIVED_DESTINATION from a prior tick - this tick's own poll
+    would have already moved it on first. Running the sweep first means a vessel that has
+    aged past the retention window gets archived - and excluded from `vessels` below -
+    before this tick's poll ever touches it."""
     db = SessionLocal()
     try:
-        vessels = db.query(Vessel).all()
+        mock_source_enabled = (
+            db.query(TrackingSource)
+            .filter(TrackingSource.adapter_key == "mock", TrackingSource.enabled.is_(True))
+            .first()
+            is not None
+        )
+        if not mock_source_enabled:
+            return 0
+
+        run_archive_sweep(db)
+
+        vessels = db.query(Vessel).filter(Vessel.archived_at.is_(None)).all()
         if not vessels:
             return 0
 

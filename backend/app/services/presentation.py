@@ -10,6 +10,7 @@ def to_vessel_out(vessel: Vessel) -> VesselOut:
         imo_number=vessel.imo_number,
         destination_port=vessel.destination_port,
         created_at=vessel.created_at,
+        archived_at=vessel.archived_at,
         current_location=latest.current_location if latest else None,
         last_event_type=latest.event_type if latest else None,
         last_event_text=latest.last_event_text if latest else None,

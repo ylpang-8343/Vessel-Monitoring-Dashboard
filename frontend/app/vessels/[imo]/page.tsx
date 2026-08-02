@@ -2,16 +2,23 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ApiError, getVesselHistory, VesselHistory } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { ApiError, archiveVessel, getVesselHistory, removeVessel, VesselHistory } from "@/lib/api";
 import StatusDot, { statusMeta } from "@/app/components/StatusDot";
 
 const HISTORY_REFRESH_MS = 30 * 1000;
 
+type ConfirmAction = "archive" | "remove" | null;
+
 export default function VesselHistoryPage({ params }: { params: Promise<{ imo: string }> }) {
   const { imo } = use(params);
+  const router = useRouter();
   const [history, setHistory] = useState<VesselHistory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirming, setConfirming] = useState<ConfirmAction>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actioning, setActioning] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -32,6 +39,32 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
     const interval = setInterval(() => refresh(), HISTORY_REFRESH_MS);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  async function handleArchive() {
+    setActioning(true);
+    setActionError(null);
+    try {
+      await archiveVessel(imo);
+      setConfirming(null);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to archive vessel");
+    } finally {
+      setActioning(false);
+    }
+  }
+
+  async function handleRemove() {
+    setActioning(true);
+    setActionError(null);
+    try {
+      await removeVessel(imo);
+      router.push("/");
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Failed to remove vessel");
+      setActioning(false);
+    }
+  }
 
   if (loading) {
     return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-zinc-500">Loading…</div>;
@@ -112,6 +145,87 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
             </ol>
           )}
         </div>
+
+        <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+          {actionError && <p className="mb-3 text-sm text-red-600">{actionError}</p>}
+
+          {vessel.archived_at ? (
+            <p className="text-xs text-zinc-500">
+              Archived on {new Date(vessel.archived_at).toLocaleString()} · History stays available for reference
+            </p>
+          ) : confirming === "archive" ? (
+            <ConfirmBar
+              message="Archive this vessel? It will move to the Archived view; history is kept."
+              confirmLabel="Archive"
+              confirmClassName="bg-[#0b3d5c] hover:bg-[#0a3450]"
+              busy={actioning}
+              onConfirm={handleArchive}
+              onCancel={() => setConfirming(null)}
+            />
+          ) : confirming === "remove" ? (
+            <ConfirmBar
+              message="Remove this vessel? This permanently deletes it and its history — this cannot be undone."
+              confirmLabel="Remove"
+              confirmClassName="bg-red-600 hover:bg-red-700"
+              busy={actioning}
+              onConfirm={handleRemove}
+              onCancel={() => setConfirming(null)}
+            />
+          ) : (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirming("archive")}
+                className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                Archive
+              </button>
+              <button
+                onClick={() => setConfirming("remove")}
+                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmBar({
+  message,
+  confirmLabel,
+  confirmClassName,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  confirmLabel: string;
+  confirmClassName: string;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <p className="text-sm">{message}</p>
+      <div className="ml-auto flex gap-2">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${confirmClassName}`}
+        >
+          {busy ? "Working…" : confirmLabel}
+        </button>
       </div>
     </div>
   );

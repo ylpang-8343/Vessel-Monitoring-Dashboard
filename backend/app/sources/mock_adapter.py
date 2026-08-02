@@ -8,6 +8,14 @@ proposal notes requires credentials/API terms not yet available (Section 10).
 
 Swap this out for a real scraper/API-backed adapter later via the same
 TrackingSourceAdapter interface -- nothing else in the app needs to change.
+
+Vessels with a destination *dwell* at "Arrived at Destination" for DWELL_TICKS polls
+(no new event emitted) before departing again. Without this, a vessel would depart on
+the very next tick after arriving, so its latest event would never stay
+ARRIVED_DESTINATION across ticks - which would make the Section 3.7 auto-archive
+retention sweep (run_archive_sweep, checked every tick in tracking_worker.py) unable to
+ever find a vessel that's actually "sitting" arrived, since the poll that runs just
+before the sweep on every tick would always have already advanced it past that state.
 """
 
 import random
@@ -18,6 +26,7 @@ from app.sources.base import RawReport, TrackingSourceAdapter
 ORIGIN_PORTS = ["Qingdao", "Shanghai", "Xiamen", "Ningbo"]
 SEA_REGIONS = ["South China Sea", "Strait of Malacca", "Singapore Strait", "Andaman Sea"]
 WAYPOINT_PORTS = ["Singapore Anchorage", "Port Klang South"]
+DWELL_TICKS = 2
 
 
 class MockAdapter(TrackingSourceAdapter):
@@ -32,6 +41,7 @@ class MockAdapter(TrackingSourceAdapter):
             "step": 0,
             "origin": random.choice(ORIGIN_PORTS),
             "waypoint": random.choice(WAYPOINT_PORTS),
+            "dwell": 0,
         }
         self._vessel_state[imo] = state
         return state
@@ -65,6 +75,10 @@ class MockAdapter(TrackingSourceAdapter):
                     occurred_at=now,
                     source_name=self.source_name,
                 )
+            elif step == 2 and destination and state["dwell"] < DWELL_TICKS:
+                # sitting at the destination - no new report this tick (see module docstring)
+                state["dwell"] += 1
+                continue
             elif step == 2 and destination:
                 report = RawReport(
                     vessel_imo=imo,
@@ -77,6 +91,7 @@ class MockAdapter(TrackingSourceAdapter):
             else:
                 # cycle back to a new voyage
                 state["step"] = -1
+                state["dwell"] = 0
                 state["origin"] = random.choice(ORIGIN_PORTS)
                 report = RawReport(
                     vessel_imo=imo,

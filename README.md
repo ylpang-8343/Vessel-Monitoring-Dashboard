@@ -1,12 +1,15 @@
-# Vessel Monitoring Dashboard — Phase 1
+# Vessel Monitoring Dashboard — Phases 1-2
 
-Implements Phase 1 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9): vessel
-registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review), automated tracking via
-a pluggable source adapter (mock adapter for now — see below), dashboard view, history timeline,
-and latest-status display.
+Implements Phases 1-2 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
 
-Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 2-5):
-arrived-at-destination auto-archiving, manual removal/archive UI, admin source management UI,
+- **Phase 1**: vessel registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review),
+  automated tracking via a pluggable source adapter (mock adapter for now — see below), dashboard
+  view, history timeline, and latest-status display.
+- **Phase 2**: arrived-at-destination auto-archive lifecycle (Section 3.7, configurable retention
+  window), manual archive/remove actions (Section 3.8), and admin tracking-source management
+  (Section 3.9) at `/settings`.
+
+Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 3-5):
 search/filters/map view, notifications/reports, and the Container/Booking Tracking module.
 
 ## Why tracking data is simulated
@@ -60,8 +63,16 @@ pytest
 ## Notes
 
 - Tables are created automatically on backend startup (`Base.metadata.create_all`) — there's no
-  migration tool wired up yet (fine for Phase 1; add Alembic before this touches real data you
-  care about preserving across schema changes).
+  migration tool wired up yet. This only *adds* new tables, it doesn't alter existing ones, so a
+  schema change (like Phase 2's new `archived_at` column) on a database that already has the old
+  `vessels` table will error on first query. If you hit `UndefinedColumn` after pulling schema
+  changes, reset the local dev volume: `docker compose down -v && docker compose up -d`. Add
+  Alembic before this touches real data you care about preserving across schema changes.
 - The mock tracking worker advances each vessel's simulated voyage by one step every poll tick
   (`TRACKING_POLL_INTERVAL_SECONDS` in `.env`, default 300s/5min to match the dashboard's
-  "auto-refreshed every 5 minutes"). Lower it in `.env` for faster manual testing.
+  "auto-refreshed every 5 minutes"). Lower it in `.env` for faster manual testing. It only runs
+  while the "Mock Tracking Feed" source is enabled in Settings (`/settings`).
+- Vessels whose latest event is "Arrived at Destination" auto-archive after
+  `ARRIVED_RETENTION_DAYS` (`.env`, default 10) — checked on every tracking-poll tick. Archiving
+  (auto or manual) is one-way for now: archived vessels move to the dashboard's Archived tab with
+  full history intact, but there's no "unarchive" — re-register the vessel to resume tracking.

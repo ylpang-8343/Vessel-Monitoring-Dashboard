@@ -13,11 +13,21 @@ export interface Vessel {
   imo_number: string;
   destination_port: string | null;
   created_at: string;
+  archived_at: string | null;
   current_location: string | null;
   last_event_type: EventType | null;
   last_event_text: string | null;
   last_event_at: string | null;
   source_name: string | null;
+}
+
+export interface TrackingSource {
+  id: number;
+  name: string;
+  url: string;
+  kind: string;
+  adapter_key: string;
+  enabled: boolean;
 }
 
 export interface StatusEvent {
@@ -69,13 +79,23 @@ async function handle<T>(res: Response): Promise<T> {
     }
     throw new ApiError(detail, res.status);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
-export async function listVessels(query?: string): Promise<Vessel[]> {
+export async function listVessels(opts?: { query?: string; archived?: boolean }): Promise<Vessel[]> {
   const url = new URL(`${API_BASE}/api/vessels`);
-  if (query) url.searchParams.set("q", query);
+  if (opts?.query) url.searchParams.set("q", opts.query);
+  if (opts?.archived) url.searchParams.set("archived", "true");
   return handle(await fetch(url.toString(), { cache: "no-store" }));
+}
+
+export async function archiveVessel(imo: string): Promise<Vessel> {
+  return handle(await fetch(`${API_BASE}/api/vessels/${imo}/archive`, { method: "POST" }));
+}
+
+export async function removeVessel(imo: string): Promise<void> {
+  return handle(await fetch(`${API_BASE}/api/vessels/${imo}`, { method: "DELETE" }));
 }
 
 export async function createVessel(input: {
@@ -117,6 +137,43 @@ export async function importBulkRows(
       body: JSON.stringify({ rows }),
     }),
   );
+}
+
+export async function listTrackingSources(): Promise<TrackingSource[]> {
+  return handle(await fetch(`${API_BASE}/api/tracking-sources`, { cache: "no-store" }));
+}
+
+export async function createTrackingSource(input: {
+  name: string;
+  url: string;
+  kind?: string;
+  adapter_key?: string;
+  enabled?: boolean;
+}): Promise<TrackingSource> {
+  return handle(
+    await fetch(`${API_BASE}/api/tracking-sources`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function updateTrackingSource(
+  id: number,
+  patch: Partial<Pick<TrackingSource, "name" | "url" | "kind" | "adapter_key" | "enabled">>,
+): Promise<TrackingSource> {
+  return handle(
+    await fetch(`${API_BASE}/api/tracking-sources/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
+  );
+}
+
+export async function deleteTrackingSource(id: number): Promise<void> {
+  return handle(await fetch(`${API_BASE}/api/tracking-sources/${id}`, { method: "DELETE" }));
 }
 
 export { ApiError };
