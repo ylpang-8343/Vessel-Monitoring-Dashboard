@@ -8,6 +8,8 @@ Implements Phases 1-2 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
 - **Phase 2**: arrived-at-destination auto-archive lifecycle (Section 3.7, configurable retention
   window), manual archive/remove actions (Section 3.8), and admin tracking-source management
   (Section 3.9) at `/settings`.
+- **Auth**: email/password login and registration, gating the whole app. See "First-time setup"
+  below — registering never grants admin, so there's a required bootstrap step.
 
 Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 3-5):
 search/filters/map view, notifications/reports, and the Container/Booking Tracking module.
@@ -50,7 +52,28 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The FastAPI backend runs at http://localhost:8000 (docs at `/docs`).
+Open http://localhost:3000 — you'll land on `/login`. See "First-time setup" below before you
+can reach Settings. The FastAPI backend runs at http://localhost:8000 (docs at `/docs`).
+
+## First-time setup: creating the first admin
+
+Registering through the web app (`/register`) always creates a regular `user` account — there is
+deliberately no path in the app itself to become admin, so there's no self-promotion hole. To get
+your first admin:
+
+```bash
+# 1. Register a normal account at http://localhost:3000/register
+
+# 2. Promote it from a terminal, with the backend venv active
+cd backend
+.venv\Scripts\activate
+python -m app.cli promote-admin you@example.com
+```
+
+Log out and back in (or just refresh) and you'll see the Settings link. From then on, admins can
+promote or demote other users from Settings → Users — the CLI command is only for bootstrapping
+the very first one. The last remaining admin can't be demoted (by themselves or anyone else),
+since that would leave nobody able to manage roles at all.
 
 ## Tests
 

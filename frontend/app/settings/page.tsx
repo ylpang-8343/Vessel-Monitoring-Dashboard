@@ -7,15 +7,83 @@ import {
   createTrackingSource,
   deleteTrackingSource,
   listTrackingSources,
+  listUsers,
   TrackingSource,
   updateTrackingSource,
+  updateUserRole,
+  User,
 } from "@/lib/api";
+import { useAuth } from "@/app/components/AuthProvider";
+import UserMenu from "@/app/components/UserMenu";
+
+type SettingsTab = "sources" | "users";
 
 export default function SettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>("sources");
+
+  return (
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
+      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
+        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
+          <div>
+            <h1 className="text-lg font-semibold text-white">Settings</h1>
+            <p className="text-xs text-white/70">Admin-only · Tracking sources and user roles</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <UserMenu />
+            <Link
+              href="/"
+              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex gap-2 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <SettingsTabButton active={tab === "sources"} onClick={() => setTab("sources")}>
+            Tracking Sources
+          </SettingsTabButton>
+          <SettingsTabButton active={tab === "users"} onClick={() => setTab("users")}>
+            Users
+          </SettingsTabButton>
+        </div>
+
+        {tab === "sources" ? <TrackingSourcesTab /> : <UsersTab />}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-t-md px-4 py-2 text-sm font-medium ${
+        active
+          ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
+          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TrackingSourcesTab() {
   const [sources, setSources] = useState<TrackingSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -35,76 +103,236 @@ export default function SettingsPage() {
     })();
   }, [refresh]);
 
+  const filteredSources = sources.filter((s) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return s.name.toLowerCase().includes(q) || s.url.toLowerCase().includes(q);
+  });
+
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">Tracking Sources</h1>
-            <p className="text-xs text-white/70">Settings · Manage vessel-tracking website sources</p>
-          </div>
-          <Link
-            href="/"
-            className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-          >
-            Back to Dashboard
-          </Link>
-        </div>
-
-        <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          Only the Mock Tracking Feed is actually polled right now — MarineTraffic, VesselFinder, and Polestar
-          GMDA have no free public API and no credentials are configured yet, so they&apos;re catalogued here but
-          marked &quot;Not yet connected&quot;. Toggling the Mock Tracking Feed on/off pauses or resumes the
-          simulated updates driving the dashboard.
-        </div>
-
-        {error && (
-          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
-        )}
-
-        <div className="bg-white dark:bg-zinc-900">
-          {loading ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                <tr>
-                  <th className="px-6 py-3">Name</th>
-                  <th className="px-6 py-3">URL</th>
-                  <th className="px-6 py-3">Kind</th>
-                  <th className="px-6 py-3">Status</th>
-                  <th className="px-6 py-3" />
-                </tr>
-              </thead>
-              <tbody>
-                {sources.map((source) => (
-                  <SourceRow key={source.id} source={source} onChanged={refresh} />
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-          {showAddForm ? (
-            <AddSourceForm
-              onCancel={() => setShowAddForm(false)}
-              onCreated={() => {
-                setShowAddForm(false);
-                refresh();
-              }}
-            />
-          ) : (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
-            >
-              + Add Source
-            </button>
-          )}
-        </div>
+    <>
+      <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        Only the Mock Tracking Feed is actually polled right now — MarineTraffic, VesselFinder, and Polestar
+        GMDA have no free public API and no credentials are configured yet, so they&apos;re catalogued here but
+        marked &quot;Not yet connected&quot;. Toggling the Mock Tracking Feed on/off pauses or resumes the
+        simulated updates driving the dashboard.
       </div>
-    </div>
+
+      <div className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search sources by name or URL…"
+          className="w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+        />
+      </div>
+
+      {error && (
+        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
+      )}
+
+      <div className="bg-white dark:bg-zinc-900">
+        {loading ? (
+          <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>
+        ) : filteredSources.length === 0 ? (
+          <div className="px-6 py-16 text-center text-sm text-zinc-500">No sources match &quot;{search}&quot;.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+              <tr>
+                <th className="px-6 py-3">Name</th>
+                <th className="px-6 py-3">URL</th>
+                <th className="px-6 py-3">Kind</th>
+                <th className="px-6 py-3">Status</th>
+                <th className="px-6 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filteredSources.map((source) => (
+                <SourceRow key={source.id} source={source} onChanged={refresh} />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+        {showAddForm ? (
+          <AddSourceForm
+            onCancel={() => setShowAddForm(false)}
+            onCreated={() => {
+              setShowAddForm(false);
+              refresh();
+            }}
+          />
+        ) : (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
+          >
+            + Add Source
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function UsersTab() {
+  const { user: currentUser } = useAuth();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await listUsers();
+      setUsers(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the API — is the backend running?");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      await refresh();
+    })();
+  }, [refresh]);
+
+  // Computed from the full list, not the filtered one - the last-admin guard must hold
+  // regardless of what the search box currently matches.
+  const adminCount = users.filter((u) => u.role === "admin").length;
+
+  const filteredUsers = users.filter((u) => {
+    const q = search.trim().toLowerCase();
+    return !q || u.email.toLowerCase().includes(q);
+  });
+
+  return (
+    <>
+      <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        Registering never grants admin — the first admin is created via the <code>promote-admin</code> terminal
+        command. From here, existing admins can promote or demote anyone else; the last remaining admin can&apos;t
+        be demoted, or no one would be able to manage roles anymore.
+      </div>
+
+      <div className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search users by email…"
+          className="w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+        />
+      </div>
+
+      {error && (
+        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
+      )}
+
+      <div className="bg-white dark:bg-zinc-900">
+        {loading ? (
+          <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="px-6 py-16 text-center text-sm text-zinc-500">No users match &quot;{search}&quot;.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+              <tr>
+                <th className="px-6 py-3">Email</th>
+                <th className="px-6 py-3">Role</th>
+                <th className="px-6 py-3">Registered</th>
+                <th className="px-6 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((u) => (
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  isSelf={u.id === currentUser?.id}
+                  isLastAdmin={u.role === "admin" && adminCount <= 1}
+                  onChanged={refresh}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function UserRow({
+  user,
+  isSelf,
+  isLastAdmin,
+  onChanged,
+}: {
+  user: User;
+  isSelf: boolean;
+  isLastAdmin: boolean;
+  onChanged: () => void;
+}) {
+  const { refresh: refreshAuth } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  async function toggleRole() {
+    setBusy(true);
+    setRowError(null);
+    try {
+      await updateUserRole(user.id, user.role === "admin" ? "user" : "admin");
+      if (isSelf) {
+        // Demoting yourself revokes admin on this same session immediately - refresh the
+        // global auth state so AuthProvider's redirect-away-from-/settings logic takes over,
+        // instead of leaving this page showing a stale "admin access required" error.
+        await refreshAuth();
+      } else {
+        onChanged();
+      }
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Failed to update role");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800">
+      <td className="px-6 py-3 font-medium">
+        {user.email}
+        {isSelf && <span className="ml-2 text-xs font-normal text-zinc-400">(you)</span>}
+      </td>
+      <td className="px-6 py-3">
+        <span
+          className={`rounded px-2 py-0.5 text-xs font-medium ${
+            user.role === "admin"
+              ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+          }`}
+        >
+          {user.role}
+        </span>
+      </td>
+      <td className="px-6 py-3 text-zinc-500">{new Date(user.created_at).toLocaleDateString()}</td>
+      <td className="px-6 py-3">
+        <div className="flex flex-col items-start gap-1">
+          <button
+            onClick={toggleRole}
+            disabled={busy || (user.role === "admin" && isLastAdmin)}
+            title={user.role === "admin" && isLastAdmin ? "Cannot demote the last remaining admin" : undefined}
+            className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            {user.role === "admin" ? "Demote to user" : "Promote to admin"}
+          </button>
+          {rowError && <span className="text-xs text-red-600">{rowError}</span>}
+        </div>
+      </td>
+    </tr>
   );
 }
 

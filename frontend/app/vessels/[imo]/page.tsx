@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiError, archiveVessel, getVesselHistory, removeVessel, VesselHistory } from "@/lib/api";
 import StatusDot, { statusMeta } from "@/app/components/StatusDot";
+import UserMenu from "@/app/components/UserMenu";
 
 const HISTORY_REFRESH_MS = 30 * 1000;
 
@@ -94,12 +95,15 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
               IMO {vessel.imo_number} · Data source: {vessel.source_name ?? "—"}
             </p>
           </div>
-          <Link
-            href="/"
-            className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-          >
-            Back to Dashboard
-          </Link>
+          <div className="flex items-center gap-3">
+            <UserMenu />
+            <Link
+              href="/"
+              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+            >
+              Back to Dashboard
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-6 border-b border-zinc-200 bg-white px-6 py-4 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-900">

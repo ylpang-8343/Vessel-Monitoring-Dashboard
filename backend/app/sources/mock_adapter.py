@@ -89,8 +89,12 @@ class MockAdapter(TrackingSourceAdapter):
                     source_name=self.source_name,
                 )
             else:
-                # cycle back to a new voyage
-                state["step"] = -1
+                # cycle back to a new voyage. This tick emits the "departed" report for the
+                # new origin (step 0's job), so step must land on 0 - not -1 - or the trailing
+                # `state["step"] += 1` below leaves it at 0 anyway and the *next* tick
+                # re-executes the step==0 branch (another "departed") instead of advancing to
+                # step 1 ("arrived"), producing two consecutive "Sailed X" events per cycle.
+                state["step"] = 0
                 state["dwell"] = 0
                 state["origin"] = random.choice(ORIGIN_PORTS)
                 report = RawReport(

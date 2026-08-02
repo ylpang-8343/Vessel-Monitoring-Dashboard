@@ -1,8 +1,9 @@
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.models import EventType
+from app.models import EventType, UserRole
 
 
 def validate_imo(value: str) -> str:
@@ -111,3 +112,50 @@ class TrackingSourceUpdate(BaseModel):
     kind: str | None = None
     adapter_key: str | None = None
     enabled: bool | None = None
+
+
+def validate_password_complexity(value: str) -> str:
+    if len(value) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    if not re.search(r"[A-Z]", value):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not re.search(r"[a-z]", value):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not re.search(r"[^A-Za-z0-9]", value):
+        raise ValueError("Password must contain at least one symbol")
+    return value
+
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    password: str
+    confirm_password: str
+
+    @field_validator("password")
+    @classmethod
+    def check_password_complexity(cls, v: str) -> str:
+        return validate_password_complexity(v)
+
+    @model_validator(mode="after")
+    def check_passwords_match(self) -> "UserRegister":
+        if self.password != self.confirm_password:
+            raise ValueError("Password and confirmation do not match")
+        return self
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    role: UserRole
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RoleUpdateRequest(BaseModel):
+    role: UserRole

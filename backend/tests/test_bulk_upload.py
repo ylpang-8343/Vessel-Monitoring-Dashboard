@@ -1,17 +1,11 @@
 import io
 
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
-
 
 def _csv_file(content: str) -> dict:
     return {"file": ("vessels.csv", io.BytesIO(content.encode()), "text/csv")}
 
 
-def test_preview_csv_flags_valid_duplicate_and_invalid_rows():
+def test_preview_csv_flags_valid_duplicate_and_invalid_rows(client):
     client.post("/api/vessels", json={"name": "MV Existing", "imo_number": "4455667"})
 
     csv_content = (
@@ -29,14 +23,14 @@ def test_preview_csv_flags_valid_duplicate_and_invalid_rows():
     assert rows[2]["status"] == "invalid"
 
 
-def test_preview_rejects_unsupported_file_type():
+def test_preview_rejects_unsupported_file_type(client):
     resp = client.post(
         "/api/vessels/bulk/preview", files={"file": ("vessels.txt", io.BytesIO(b"MV ABC"), "text/plain")}
     )
     assert resp.status_code == 400
 
 
-def test_import_inserts_valid_rows_and_skips_duplicates():
+def test_import_inserts_valid_rows_and_skips_duplicates(client):
     client.post("/api/vessels", json={"name": "MV Existing", "imo_number": "4455667"})
 
     resp = client.post(
@@ -56,7 +50,7 @@ def test_import_inserts_valid_rows_and_skips_duplicates():
     assert body["skipped"][0]["status"] == "duplicate"
 
 
-def test_pdf_preview_without_api_key_returns_503(monkeypatch):
+def test_pdf_preview_without_api_key_returns_503(client, monkeypatch):
     monkeypatch.setattr("app.config.settings.anthropic_api_key", None)
     resp = client.post(
         "/api/vessels/bulk/preview", files={"file": ("vessels.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf")}

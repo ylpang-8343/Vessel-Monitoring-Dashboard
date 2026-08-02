@@ -52,3 +52,45 @@ def db_session():
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture
+def client():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    test_client = TestClient(app)
+    resp = test_client.post(
+        "/api/auth/register",
+        json={"email": "test.user@example.com", "password": "Passw0rd!", "confirm_password": "Passw0rd!"},
+    )
+    assert resp.status_code == 201, resp.text
+    return test_client
+
+
+@pytest.fixture
+def admin_client():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    from app.models import User, UserRole
+
+    test_client = TestClient(app)
+    resp = test_client.post(
+        "/api/auth/register",
+        json={"email": "test.admin@example.com", "password": "Passw0rd!", "confirm_password": "Passw0rd!"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    # No self-promotion path exists in the app on purpose (see app/cli.py) - promote directly
+    # via the DB here, the same way the terminal command would.
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == "test.admin@example.com").first()
+        user.role = UserRole.ADMIN
+        db.commit()
+    finally:
+        db.close()
+
+    return test_client

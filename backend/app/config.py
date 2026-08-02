@@ -12,5 +12,11 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # Dev-only default so the app runs out of the box - override in .env for anything beyond
+    # local use, since anyone with this value can forge session cookies.
+    jwt_secret_key: str = "dev-only-insecure-secret-change-me"
+    jwt_expire_days: int = 7
+    cookie_secure: bool = False
+
 
 settings = Settings()

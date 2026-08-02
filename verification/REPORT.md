@@ -1,19 +1,27 @@
-# Phase 1-2 Verification Report
+# Verification Report — Phases 1-2 + Auth + Search
 
 Tested against `Vessel_Monitoring_Dashboard_Proposal_Final.pdf`, Sections 3.1-3.9 and Section 9
-(Phases 1-2). Screenshots referenced below live in `verification/screenshots/`, numbered in the
-order they were captured during this pass. All testing used a clean, freshly-seeded database
-(`docker compose down -v && docker compose up -d`) so results reflect default configuration.
+(Phases 1-2), plus the subsequently-added email/password authentication and the three search bars
+(dashboard, Settings → Tracking Sources, Settings → Users). Screenshots referenced below live in
+`verification/screenshots/`, numbered in the order captured during this pass. This pass fully
+replaces the screenshot set and findings from the pre-auth verification — the numbering has
+changed since every flow now starts from a login.
+
+All testing used a clean, freshly-seeded database (`docker compose down -v && docker compose up
+-d`) so results reflect default configuration.
 
 ## Result summary
 
-- Backend: **42/42 pytest tests pass** (`cd backend && pytest`).
+- Backend: **66/66 pytest tests pass** (`cd backend && pytest`).
 - Frontend: `tsc --noEmit` and `eslint` both clean.
-- Full manual walkthrough of every Phase 1-2 requirement below, driven through the real UI in
-  headless Chromium and cross-checked against the API/database.
-- **One real bug found and fixed during this pass** (Section 3.7, see below) — not a cosmetic
-  issue, an actual case where the auto-archive automation could never fire in live operation.
-- **One minor UX gap found, not fixed** (Section 3.2, see below) — noted for a future pass.
+- Full manual walkthrough of every requirement below, driven through the real UI in headless
+  Chromium (now via `/register` → `/login` first, since the whole app is gated) and cross-checked
+  against the API/database directly.
+- **One real bug found and fixed this pass** (mock tracking adapter — see below). It predates
+  auth/search and was never caught by the earlier verification pass or by unit tests calling the
+  adapter in isolation; a longer live-scheduler run this time surfaced it.
+- **No conflicts found** between auth/search and any Phase 1-2 behavior — see the dedicated
+  section at the end.
 
 ---
 
@@ -21,124 +29,124 @@ order they were captured during this pass. All testing used a clean, freshly-see
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| Name, IMO (unique 7-digit), optional destination | Pass | `02, 03` |
+| Name, IMO (unique 7-digit), optional destination | Pass | `04` |
 | Duplicate IMO rejected with clear message | Pass | `05` — "IMO 1234567 is already registered" |
-| Destination from configurable list or free text | Pass | dropdown in `03`; free-text "Other" option in code (`AddVesselModal.tsx`), not separately screenshotted this pass |
-| No destination → vessel just shows latest status indefinitely | Pass | MV Horizon Star throughout `08`, `10` — no destination column, never enters arrival flow |
-
-**04** confirms a freshly-registered vessel shows "Awaiting first tracking update…" rather than a
-guessed status (Section 3.6).
+| No destination → vessel just shows latest status indefinitely | Pass | MV Horizon Star throughout `07`, `10` — never enters arrival flow |
 
 ## Section 3.2 — Bulk Upload (Excel/CSV/PDF)
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| CSV parsed row-by-row | Pass | `07` |
-| Editable preview before import | Pass | `07` — all three fields editable inline |
-| Row-level validation (ok / duplicate / invalid) | Pass | `07` shows "Ready" / "Needs fix"; duplicate case covered by `test_preview_csv_flags_valid_duplicate_and_invalid_rows` |
-| Nothing imported silently | Pass | Import button labelled with exact importable count, confirmed excludes duplicates/invalid (`08` shows only the 2 valid rows landed) |
-| PDF extraction, or a clear "unavailable" message without an API key | Pass | `09` — "ANTHROPIC_API_KEY is not configured; PDF extraction is unavailable" |
+| CSV parsed row-by-row, editable preview, row-level validation | Pass | `06` — "Ready" / "Needs fix" statuses |
+| Nothing imported silently | Pass | `07` — only the 2 valid rows landed |
+| PDF extraction, or a clear "unavailable" message without an API key | Pass | `08` |
 
-**Minor UX gap found (not fixed):** when a PDF preview fails, the Bulk Upload panel has no
-`Cancel` button (only the modal's header ✕) because the panel only renders Cancel/Import once
-`rows.length > 0`, and a failed preview leaves `rows` empty. Not a functional blocker — the
-header ✕ still closes it — but worth a follow-up (`frontend/app/components/AddVesselModal.tsx`,
-`BulkUploadForm`).
+Still-open minor UX gap from the previous pass (unchanged, not re-verified in depth this time):
+the Bulk Upload panel has no Cancel button when a PDF preview errors out, only the modal header ✕.
 
 ## Section 3.3 / 3.3a — Automated Tracking & Status Detection
 
 | Requirement | Result | Evidence |
 |---|---|---|
-| Scheduled polling updates location/status | Pass | `10` — 4 vessels advanced via the tracking worker |
-| Status derived from source report vs. known ports vs. destination | Pass | `backend/tests/test_status_engine.py`, 8/8 tests covering all 5 states, case-insensitivity, whitespace |
-| No destination → only Sailing/At Sea/At Port ever shown | Pass | MV Horizon Star / MV Northern Light in `10` never show ETA/Arrived statuses |
+| Scheduled polling updates location/status | Pass | `10` |
+| Status derived from source report vs. known ports vs. destination | Pass | `test_status_engine.py`, 8/8 |
+| No destination → only Sailing/At Sea/At Port ever shown | Pass | `10` |
+
+### New bug found and fixed: duplicate "departed" event on every voyage-cycle reset
+
+The mock adapter's "cycle back to a new voyage" branch (`mock_adapter.py`) set
+`state["step"] = -1` and emitted a "departed [new origin]" report; the shared
+`state["step"] += 1` at the bottom of the loop then left `step` at **0**, not 1. On the *next*
+tick, the adapter re-executed the `step == 0` branch — re-emitting an identical "departed
+[same origin]" report a second time — instead of advancing to "arrived". Visible directly in a
+vessel's history as two consecutive, identical "Sailed X" lines every time it completed a voyage
+cycle (caught in an earlier draft of screenshot `11`, before the fix).
+
+This wasn't caught earlier because:
+- The original Phase 1-2 verification pass only ran the mock adapter for a few ticks — not
+  enough to reach a full cycle-reset.
+- No test exercised more than one full voyage cycle end-to-end.
+
+**Fix**: `state["step"] = 0` instead of `-1` in the reset branch, so the trailing `+= 1` correctly
+lands on step 1 (`"arrived"`) for the next tick. Two new tests in
+`backend/tests/test_mock_adapter.py` drive a full cycle and assert no duplicate "departed" report
+and that internal state lands on step 1 after a reset. `11` (captured post-fix) shows three clean
+voyage cycles with no repeated lines.
 
 ## Section 3.4 — Dashboard View
 
-| Requirement | Result | Evidence |
-|---|---|---|
-| Single sortable table: name, IMO, location, last event, destination, source | Pass | `01`, `10` |
-| "Last Event" states exactly what/where/when | Pass | e.g. "Sailed Pasir Gudang — 02 Aug 2026, 09:04" in `10` |
-| Colour-coded dot per category (3.4 references 6.E) | Pass | `10` — blue (Sailing), grey (Sailed from Destination); green/orange verified in `14`/`20` |
+Pass — table columns, "Last Event" text format, and colour-coded dots all unchanged and correct
+(`01`, `10`).
 
 ## Section 3.5 — Vessel History
 
-| Requirement | Result | Evidence |
-|---|---|---|
-| Full timeline reconstructed from every status update | Pass | `11` |
-| Current status reflects latest event, not a stale one | Pass | `11` — status correctly reads "Sailed from Destination" after departure, matching the proposal's own worked example almost verbatim |
+Pass — `11` shows a full, correctly-alternating timeline (departed → arrived → sailed-from-
+destination → departed → arrived …), current-status banner reflects the latest event.
 
 ## Section 3.6 — Latest Status Display
 
-Pass — `04` (no data yet), `10`/`11` (latest event always shown, history preserved underneath,
-confirmed via `GET /history` returning the full event list every time).
+Pass — `04` (no data yet, "Awaiting first tracking update…"), `10`/`11` (latest event always
+shown, full history preserved underneath).
 
 ## Section 3.7 — "Arrived at Destination" Lifecycle Automation
 
-**A real bug was found here and fixed.** Original design: the mock tracking adapter advanced
-every vessel by one step on every poll tick unconditionally, and the retention sweep ran *after*
-polling within the same tick. Consequence: a vessel's latest event could never remain
-`ARRIVED_DESTINATION` across two ticks — the very next tick's poll always moved it to "departed"
-before the sweep got a chance to see it sitting there. **The retention sweep was unreachable via
-the live scheduler**, even though calling it directly (as the original Phase 2 unit tests did)
-looked correct in isolation. This is exactly the kind of bug that per-function unit tests miss and
-an end-to-end pass catches.
-
-Fix (`backend/app/sources/mock_adapter.py`, `backend/app/services/tracking_worker.py`):
-1. A vessel now *dwells* at `ARRIVED_DESTINATION` for `DWELL_TICKS` (2) polls — no new event is
-   emitted while dwelling — before departing again, so it has a real window during which "days
-   since arrival" can be evaluated.
-2. `run_archive_sweep()` now runs *before* polling in each tick, not after, so a vessel that has
-   aged past retention is archived and excluded from that same tick's poll — instead of the poll
-   always winning the race.
-
-Verified via the **actual live scheduler** (not a direct function call): registered a vessel,
-temporarily ran the backend with `ARRIVED_RETENTION_DAYS=0` / `TRACKING_POLL_INTERVAL_SECONDS=8`,
-and watched it depart → arrive → auto-archive with zero manual intervention:
-
-```
-09:22:08  Sailed Ningbo         (ETA to Destination)
-09:22:16  Arrived Butterworth   (Arrived at Destination)
-09:22:24  archived_at set       (retention sweep, next tick)
-```
-
-No spurious third "departed" event was created — confirming the vessel was correctly excluded
-from polling the instant it was archived. Evidence: `12`, `13`, `14`, `15`.
-
-Two new regression tests guard this specifically (not just the isolated sweep logic, already
-covered by 5 existing `test_archive_worker.py` tests):
-`test_vessel_dwells_at_arrived_destination_across_ticks_instead_of_departing_immediately` and
-`test_live_poll_pathway_auto_archives_vessel_past_retention_without_manual_sweep_call`.
-
-Under **default settings** (10-day retention, 5-minute polling, 2-tick/10-minute dwell), a vessel
-still departs again on its own well before the retention window would apply — matching Section
-3.5's expected "Sailed from Destination" behavior for the normal case. The sweep exists for
-vessels that genuinely sit arrived for a long time (a real adapter may simply stop reporting after
-arrival), which the mock now models by dwelling instead of always advancing.
+Re-verified with tracking temporarily disabled (via Settings) so the live scheduler couldn't
+overwrite the test vessel mid-check, then a backdated arrival + `run_archive_sweep()`:
+auto-archived correctly (`archived_count: 1`), and a control case (fresh arrival, not yet past
+retention) correctly archived nothing (`archived_count: 0`). Result visible in the dashboard
+Archived tab with no manual action taken: `15`.
 
 ## Section 3.8 — Manual Removal
 
-| Requirement | Result | Evidence |
-|---|---|---|
-| Archive (keep history) at any point | Pass | `16`, `17` — confirmation step, "Archived on" badge, history intact |
-| Remove (delete) at any point, regardless of destination | Pass | `18`, `19` — confirmed gone from dashboard and `GET /history` returns 404 after |
-| Cascading delete of history | Pass | `test_remove_vessel_deletes_it_and_its_history` |
+Pass — archive (`12`, `13`) and remove (`14`) both still work correctly under auth, exactly as
+before. `GET /history` returns 404 after removal; the vessel's history stays fully browsable
+after archiving.
 
 ## Section 3.9 — Website Source Management
 
-| Requirement | Result | Evidence |
-|---|---|---|
-| Admin can add, edit, remove sources | Pass | `23`/`24` (add), `25`/`26` (edit), `27` (remove) |
-| Settings screen, no code change needed to catalogue a new site | Pass | same |
-| Enable/disable is honest about what's actually connected | Pass | `21` — MarineTraffic/VesselFinder/Polestar GMDA permanently labelled "Not yet connected" |
-| Toggling the functional (mock) source actually pauses/resumes tracking | Pass | `20`→`21`: 2 ticks while disabled created 0 events (confirmed via API); `22`: re-enabled, next tick created 1 event |
+Pass — admin-only gating (`18`), "Not yet connected" labelling on the three real sites, and the
+functional mock-source enable/disable toggle all still work. Add/edit/remove CRUD unchanged from
+the previous pass (not re-screenshotted this time, covered by `test_tracking_sources_api.py`).
 
 ---
 
-## Known gaps (out of scope for Phases 1-2, previously communicated)
+## Auth (email/password login, admin bootstrap via terminal, role management)
 
-Search/filters/map view (Phase 3), notifications/reports (Phase 4), Container/Booking module
-(Phase 5), and any authentication/role system (never scoped in any phase — flagged separately in
-conversation) remain unbuilt. Section 3.10's neutral status categorisation is satisfied by
-construction — the status engine only ever produces the five states in `EventType`, never a
-load/discharge guess.
+| Check | Result | Evidence |
+|---|---|---|
+| Unauthenticated visit to any page redirects to `/login` | Pass | `01`; also checked a direct deep link to `/vessels/2233445` — redirects cleanly, no data leak |
+| Register → live password-rule checklist → account created as `user`, never `admin` | Pass | `02`, `03`, `04` |
+| Non-admin has no Settings link and is bounced from `/settings` if navigated directly | Pass | `04` (no link); direct-nav bounce confirmed in the prior auth-focused pass, unchanged |
+| `python -m app.cli promote-admin <email>` is the only way to create an admin | Pass | used to promote `owner@example.com` mid-pass; no in-app self-promotion path exists |
+| Already-logged-in user visiting `/login` redirects to dashboard instead of showing the form | Pass | `17` — a specific edge case checked this pass, no stale/broken state |
+| Admin can promote/demote; last remaining admin can't be demoted | Pass | `20` — "Demote to user" correctly disabled/would-409 when it's the only admin |
+| Self-demotion cleanly redirects out of Settings (fixed in the prior auth pass) | Not re-broken | unchanged code path, not re-exercised this pass |
+
+## Search bars (dashboard, Tracking Sources, Users)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Dashboard search filters by name/IMO/destination (server-side), works alongside Active/Archived tabs | Pass | `09` |
+| Tracking Sources search filters by name/URL only (client-side) — doesn't match on Kind, which is correct given its own label | Pass | `18` |
+| Users search filters by email (client-side); last-admin guard still computed from the *unfiltered* list | Pass | `20` |
+| No interference between search debouncing and the dashboard's 5-minute auto-refresh interval | Pass | reviewed the effect dependencies directly (`debouncedSearch` state avoids the stale-closure issue a naive implementation would hit) |
+
+---
+
+## Conflicts between the new auth/search work and Phase 1-2: none found
+
+Specifically checked for and ruled out:
+- Auth cookies (`credentials: "include"`) interfering with the existing `FormData` bulk-upload
+  request — still works (`06`, `07`).
+- The `apiFetch` wrapper's automatic `Content-Type` header breaking multipart uploads — it
+  correctly skips setting `Content-Type` when the body is `FormData`.
+- Router-level auth dependencies (`Depends(get_current_user)` / `Depends(require_admin)`)
+  changing any response shape or status code for the *authorized* case — no schema changes, only
+  401/403 added for the unauthorized case (already covered by dedicated tests).
+- Search state fighting the existing view/archived-tab state or the periodic refresh — traced
+  through the effect dependencies by hand in addition to the browser check.
+
+## Known gaps (unchanged, out of scope for this pass)
+
+Search/filters/map view beyond what's now built (Phase 3 still owes filter chips and the map),
+notifications/reports (Phase 4), and the Container/Booking module (Phase 5) remain unbuilt.

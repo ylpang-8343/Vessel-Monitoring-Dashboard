@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db import Base, SessionLocal, engine
+from app.dependencies import get_current_user, require_admin
 from app.models import SourceKind, TrackingSource
-from app.routers import bulk_upload, history, tracking_sources, vessels
+from app.routers import auth, bulk_upload, history, tracking_sources, users, vessels
 from app.services.tracking_worker import start_scheduler, stop_scheduler
 
 # adapter_key="mock" is the only one actually wired up to run (see sources/mock_adapter.py).
@@ -55,10 +56,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(vessels.router)
-app.include_router(history.router)
-app.include_router(bulk_upload.router)
-app.include_router(tracking_sources.router)
+app.include_router(auth.router)
+app.include_router(users.router)
+
+# Whole app requires login; Settings/tracking-source management additionally requires admin
+# (Section 3.9 - "Admin users can add, edit, and remove vessel tracking website sources").
+app.include_router(vessels.router, dependencies=[Depends(get_current_user)])
+app.include_router(history.router, dependencies=[Depends(get_current_user)])
+app.include_router(bulk_upload.router, dependencies=[Depends(get_current_user)])
+app.include_router(tracking_sources.router, dependencies=[Depends(require_admin)])
 
 
 @app.get("/api/health")

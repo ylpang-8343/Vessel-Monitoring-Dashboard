@@ -1,11 +1,4 @@
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
-
-
-def _register(name="MV ABC", imo="1234567", destination=None):
+def _register(client, name="MV ABC", imo="1234567", destination=None):
     payload = {"name": name, "imo_number": imo}
     if destination:
         payload["destination_port"] = destination
@@ -14,8 +7,8 @@ def _register(name="MV ABC", imo="1234567", destination=None):
     return resp.json()
 
 
-def test_archive_hides_vessel_from_default_list_and_shows_under_archived():
-    _register()
+def test_archive_hides_vessel_from_default_list_and_shows_under_archived(client):
+    _register(client)
     resp = client.post("/api/vessels/1234567/archive")
     assert resp.status_code == 200
     assert resp.json()["archived_at"] is not None
@@ -27,20 +20,20 @@ def test_archive_hides_vessel_from_default_list_and_shows_under_archived():
     assert any(v["imo_number"] == "1234567" for v in archived)
 
 
-def test_archive_unknown_vessel_404():
+def test_archive_unknown_vessel_404(client):
     resp = client.post("/api/vessels/0000000/archive")
     assert resp.status_code == 404
 
 
-def test_archive_already_archived_409():
-    _register()
+def test_archive_already_archived_409(client):
+    _register(client)
     client.post("/api/vessels/1234567/archive")
     resp = client.post("/api/vessels/1234567/archive")
     assert resp.status_code == 409
 
 
-def test_remove_vessel_deletes_it_and_its_history():
-    _register()
+def test_remove_vessel_deletes_it_and_its_history(client):
+    _register(client)
     resp = client.delete("/api/vessels/1234567")
     assert resp.status_code == 204
 
@@ -49,13 +42,13 @@ def test_remove_vessel_deletes_it_and_its_history():
     assert all(v["imo_number"] != "1234567" for v in active)
 
 
-def test_remove_unknown_vessel_404():
+def test_remove_unknown_vessel_404(client):
     resp = client.delete("/api/vessels/0000000")
     assert resp.status_code == 404
 
 
-def test_archived_vessel_history_still_viewable():
-    _register()
+def test_archived_vessel_history_still_viewable(client):
+    _register(client)
     client.post("/api/vessels/1234567/archive")
     resp = client.get("/api/vessels/1234567/history")
     assert resp.status_code == 200

@@ -7,6 +7,15 @@ export type EventType =
   | "arrived_destination"
   | "sailed_from_destination";
 
+export type UserRole = "user" | "admin";
+
+export interface User {
+  id: number;
+  email: string;
+  role: UserRole;
+  created_at: string;
+}
+
 export interface Vessel {
   id: number;
   name: string;
@@ -83,19 +92,58 @@ async function handle<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// Every request carries the session cookie - the backend gates almost everything behind
+// authentication (and Settings/tracking-sources behind the admin role), so this can't be
+// opt-in per call.
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
+  });
+}
+
+export async function register(input: {
+  email: string;
+  password: string;
+  confirm_password: string;
+}): Promise<User> {
+  return handle(await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify(input) }));
+}
+
+export async function login(input: { email: string; password: string }): Promise<User> {
+  return handle(await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify(input) }));
+}
+
+export async function logout(): Promise<void> {
+  return handle(await apiFetch("/api/auth/logout", { method: "POST" }));
+}
+
+export async function getCurrentUser(): Promise<User> {
+  return handle(await apiFetch("/api/auth/me", { cache: "no-store" }));
+}
+
+export async function listUsers(): Promise<User[]> {
+  return handle(await apiFetch("/api/users", { cache: "no-store" }));
+}
+
+export async function updateUserRole(id: number, role: UserRole): Promise<User> {
+  return handle(await apiFetch(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }));
+}
+
 export async function listVessels(opts?: { query?: string; archived?: boolean }): Promise<Vessel[]> {
   const url = new URL(`${API_BASE}/api/vessels`);
   if (opts?.query) url.searchParams.set("q", opts.query);
   if (opts?.archived) url.searchParams.set("archived", "true");
-  return handle(await fetch(url.toString(), { cache: "no-store" }));
+  return handle(await apiFetch(url.pathname + url.search, { cache: "no-store" }));
 }
 
 export async function archiveVessel(imo: string): Promise<Vessel> {
-  return handle(await fetch(`${API_BASE}/api/vessels/${imo}/archive`, { method: "POST" }));
+  return handle(await apiFetch(`/api/vessels/${imo}/archive`, { method: "POST" }));
 }
 
 export async function removeVessel(imo: string): Promise<void> {
-  return handle(await fetch(`${API_BASE}/api/vessels/${imo}`, { method: "DELETE" }));
+  return handle(await apiFetch(`/api/vessels/${imo}`, { method: "DELETE" }));
 }
 
 export async function createVessel(input: {
@@ -103,44 +151,27 @@ export async function createVessel(input: {
   imo_number: string;
   destination_port?: string | null;
 }): Promise<Vessel> {
-  return handle(
-    await fetch(`${API_BASE}/api/vessels`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-  );
+  return handle(await apiFetch("/api/vessels", { method: "POST", body: JSON.stringify(input) }));
 }
 
 export async function getVesselHistory(imo: string): Promise<VesselHistory> {
-  return handle(await fetch(`${API_BASE}/api/vessels/${imo}/history`, { cache: "no-store" }));
+  return handle(await apiFetch(`/api/vessels/${imo}/history`, { cache: "no-store" }));
 }
 
 export async function previewBulkUpload(file: File): Promise<{ rows: BulkUploadRow[] }> {
   const formData = new FormData();
   formData.append("file", file);
-  return handle(
-    await fetch(`${API_BASE}/api/vessels/bulk/preview`, {
-      method: "POST",
-      body: formData,
-    }),
-  );
+  return handle(await apiFetch("/api/vessels/bulk/preview", { method: "POST", body: formData }));
 }
 
 export async function importBulkRows(
   rows: { name: string; imo_number: string; destination_port?: string | null }[],
 ): Promise<BulkImportResult> {
-  return handle(
-    await fetch(`${API_BASE}/api/vessels/bulk/import`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows }),
-    }),
-  );
+  return handle(await apiFetch("/api/vessels/bulk/import", { method: "POST", body: JSON.stringify({ rows }) }));
 }
 
 export async function listTrackingSources(): Promise<TrackingSource[]> {
-  return handle(await fetch(`${API_BASE}/api/tracking-sources`, { cache: "no-store" }));
+  return handle(await apiFetch("/api/tracking-sources", { cache: "no-store" }));
 }
 
 export async function createTrackingSource(input: {
@@ -150,30 +181,18 @@ export async function createTrackingSource(input: {
   adapter_key?: string;
   enabled?: boolean;
 }): Promise<TrackingSource> {
-  return handle(
-    await fetch(`${API_BASE}/api/tracking-sources`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-  );
+  return handle(await apiFetch("/api/tracking-sources", { method: "POST", body: JSON.stringify(input) }));
 }
 
 export async function updateTrackingSource(
   id: number,
   patch: Partial<Pick<TrackingSource, "name" | "url" | "kind" | "adapter_key" | "enabled">>,
 ): Promise<TrackingSource> {
-  return handle(
-    await fetch(`${API_BASE}/api/tracking-sources/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    }),
-  );
+  return handle(await apiFetch(`/api/tracking-sources/${id}`, { method: "PATCH", body: JSON.stringify(patch) }));
 }
 
 export async function deleteTrackingSource(id: number): Promise<void> {
-  return handle(await fetch(`${API_BASE}/api/tracking-sources/${id}`, { method: "DELETE" }));
+  return handle(await apiFetch(`/api/tracking-sources/${id}`, { method: "DELETE" }));
 }
 
 export { ApiError };

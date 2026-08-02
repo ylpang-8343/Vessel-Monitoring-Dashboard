@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import AddVesselModal from "./components/AddVesselModal";
 import VesselTable from "./components/VesselTable";
+import UserMenu from "./components/UserMenu";
+import { useAuth } from "./components/AuthProvider";
 import { ApiError, listVessels, Vessel } from "@/lib/api";
 
 // Matches Figure 2's "Auto-refreshed every 5 minutes" caption.
@@ -12,15 +14,25 @@ const DASHBOARD_REFRESH_MS = 5 * 60 * 1000;
 type View = "active" | "archived";
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const [view, setView] = useState<View>("active");
   const [vessels, setVessels] = useState<Vessel[]>([]);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Debounce the raw input into a separate value so `refresh` (and the effect below) only
+  // change identity 250ms after typing stops, instead of on every keystroke.
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   const refresh = useCallback(async () => {
     try {
-      const data = await listVessels({ archived: view === "archived" });
+      const data = await listVessels({ archived: view === "archived", query: debouncedSearch || undefined });
       setVessels(data);
       setError(null);
     } catch (err) {
@@ -28,7 +40,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [view]);
+  }, [view, debouncedSearch]);
 
   useEffect(() => {
     void (async () => {
@@ -48,12 +60,15 @@ export default function DashboardPage() {
             <p className="text-xs text-white/70">Multi-Port Operations · Live View</p>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/settings"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Settings
-            </Link>
+            <UserMenu />
+            {user?.role === "admin" && (
+              <Link
+                href="/settings"
+                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
+              >
+                Settings
+              </Link>
+            )}
             {view === "active" && (
               <button
                 onClick={() => setShowAddModal(true)}
@@ -65,13 +80,21 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="flex gap-2 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <ViewTab active={view === "active"} onClick={() => setView("active")}>
-            Active
-          </ViewTab>
-          <ViewTab active={view === "archived"} onClick={() => setView("archived")}>
-            Archived
-          </ViewTab>
+        <div className="flex items-center justify-between gap-4 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex gap-2">
+            <ViewTab active={view === "active"} onClick={() => setView("active")}>
+              Active
+            </ViewTab>
+            <ViewTab active={view === "archived"} onClick={() => setView("archived")}>
+              Archived
+            </ViewTab>
+          </div>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search vessel, IMO, port…"
+            className="mb-2 w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          />
         </div>
 
         {error && (
