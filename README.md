@@ -1,6 +1,6 @@
-# Vessel Monitoring Dashboard — Phases 1-2
+# Vessel Monitoring Dashboard — Phases 1-3
 
-Implements Phases 1-2 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
+Implements Phases 1-3 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
 
 - **Phase 1**: vessel registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review),
   automated tracking via a pluggable source adapter (mock adapter for now — see below), dashboard
@@ -8,11 +8,15 @@ Implements Phases 1-2 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
 - **Phase 2**: arrived-at-destination auto-archive lifecycle (Section 3.7, configurable retention
   window), manual archive/remove actions (Section 3.8), and admin tracking-source management
   (Section 3.9) at `/settings`.
+- **Phase 3**: dashboard search (6.A), status filter chips (6.D: At Sea / At Port / ETA to
+  Destination / Arrived at Destination), status colour coding (6.E), and a live Map View (6.B) at
+  `/map` using react-leaflet + OpenStreetMap tiles, plus search on the Settings → Tracking Sources
+  and Settings → Users tables.
 - **Auth**: email/password login and registration, gating the whole app. See "First-time setup"
   below — registering never grants admin, so there's a required bootstrap step.
 
-Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 3-5):
-search/filters/map view, notifications/reports, and the Container/Booking Tracking module.
+Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 4-5):
+notifications/reports, and the Container/Booking Tracking module.
 
 ## Why tracking data is simulated
 
@@ -99,3 +103,7 @@ pytest
   `ARRIVED_RETENTION_DAYS` (`.env`, default 10) — checked on every tracking-poll tick. Archiving
   (auto or manual) is one-way for now: archived vessels move to the dashboard's Archived tab with
   full history intact, but there's no "unarchive" — re-register the vessel to resume tracking.
+- Map View (`/map`) only plots vessels whose current location is a recognised port/sea-region —
+  see `frontend/lib/portCoordinates.ts`. A vessel with an unrecognised location (e.g. a free-text
+  destination the mock adapter never emits) is listed separately below the map instead of guessed
+  at. Requires outbound access to `tile.openstreetmap.org` to load map tiles.
