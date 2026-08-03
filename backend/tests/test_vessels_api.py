@@ -41,6 +41,50 @@ def test_list_vessels_search_by_name_imo_or_destination(client):
     assert len(client.get("/api/vessels").json()) == 2
 
 
+def test_list_vessels_filters_by_status(client, db_session):
+    from datetime import datetime, timezone
+
+    from app.models import EventType, StatusEvent, Vessel
+
+    sailing = Vessel(name="MV Sailing", imo_number="1111111")
+    at_port = Vessel(name="MV At Port", imo_number="2222222")
+    db_session.add_all([sailing, at_port])
+    db_session.commit()
+    db_session.refresh(sailing)
+    db_session.refresh(at_port)
+
+    now = datetime.now(timezone.utc)
+    db_session.add_all(
+        [
+            StatusEvent(
+                vessel_id=sailing.id,
+                event_type=EventType.SAILING,
+                current_location="South China Sea",
+                last_event_text="Sailed Qingdao",
+                source_name="Mock Tracking Feed",
+                occurred_at=now,
+            ),
+            StatusEvent(
+                vessel_id=at_port.id,
+                event_type=EventType.AT_PORT,
+                current_location="Singapore Anchorage",
+                last_event_text="Arrived Singapore",
+                source_name="Mock Tracking Feed",
+                occurred_at=now,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    sailing_only = client.get("/api/vessels", params={"status": "sailing"}).json()
+    assert [v["imo_number"] for v in sailing_only] == ["1111111"]
+
+    at_port_only = client.get("/api/vessels", params={"status": "at_port"}).json()
+    assert [v["imo_number"] for v in at_port_only] == ["2222222"]
+
+    assert len(client.get("/api/vessels").json()) == 2
+
+
 def test_history_not_found_for_unknown_imo(client):
     resp = client.get("/api/vessels/0000000/history")
     assert resp.status_code == 404

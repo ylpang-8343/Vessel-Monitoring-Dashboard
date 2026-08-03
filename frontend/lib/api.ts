@@ -131,10 +131,15 @@ export async function updateUserRole(id: number, role: UserRole): Promise<User> 
   return handle(await apiFetch(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }));
 }
 
-export async function listVessels(opts?: { query?: string; archived?: boolean }): Promise<Vessel[]> {
+export async function listVessels(opts?: {
+  query?: string;
+  archived?: boolean;
+  status?: EventType;
+}): Promise<Vessel[]> {
   const url = new URL(`${API_BASE}/api/vessels`);
   if (opts?.query) url.searchParams.set("q", opts.query);
   if (opts?.archived) url.searchParams.set("archived", "true");
+  if (opts?.status) url.searchParams.set("status", opts.status);
   return handle(await apiFetch(url.pathname + url.search, { cache: "no-store" }));
 }
 

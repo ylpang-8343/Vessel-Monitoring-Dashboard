@@ -6,12 +6,23 @@ import AddVesselModal from "./components/AddVesselModal";
 import VesselTable from "./components/VesselTable";
 import UserMenu from "./components/UserMenu";
 import { useAuth } from "./components/AuthProvider";
-import { ApiError, listVessels, Vessel } from "@/lib/api";
+import { statusMeta } from "./components/StatusDot";
+import { ApiError, EventType, listVessels, Vessel } from "@/lib/api";
 
 // Matches Figure 2's "Auto-refreshed every 5 minutes" caption.
 const DASHBOARD_REFRESH_MS = 5 * 60 * 1000;
 
 type View = "active" | "archived";
+
+// Section 6.D filter chips - the neutral, verifiable statuses from Section 3.10, not a
+// fixed "Pasir Gudang" filter. "Sailed from Destination" is deliberately left out: it isn't
+// one of the four chips the proposal calls out.
+const STATUS_FILTERS: { value: EventType; label: string }[] = [
+  { value: "sailing", label: "At Sea" },
+  { value: "at_port", label: "At Port" },
+  { value: "eta_destination", label: "ETA to Destination" },
+  { value: "arrived_destination", label: "Arrived at Destination" },
+];
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -19,6 +30,7 @@ export default function DashboardPage() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<EventType | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +44,13 @@ export default function DashboardPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listVessels({ archived: view === "archived", query: debouncedSearch || undefined });
+      const data = await listVessels({
+        archived: view === "archived",
+        query: debouncedSearch || undefined,
+        // The status chips only apply to the Active view - Archived has its own separate
+        // concept of "what happened to this vessel" that doesn't fit the same four chips.
+        status: view === "active" && statusFilter ? statusFilter : undefined,
+      });
       setVessels(data);
       setError(null);
     } catch (err) {
@@ -40,7 +58,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [view, debouncedSearch]);
+  }, [view, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     void (async () => {
@@ -61,6 +79,12 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-3">
             <UserMenu />
+            <Link
+              href="/map"
+              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
+            >
+              Map View
+            </Link>
             {user?.role === "admin" && (
               <Link
                 href="/settings"
@@ -96,6 +120,20 @@ export default function DashboardPage() {
             className="mb-2 w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           />
         </div>
+
+        {view === "active" && (
+          <div className="flex flex-wrap gap-2 border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <FilterChip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+              All
+            </FilterChip>
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <FilterChip key={value} active={statusFilter === value} onClick={() => setStatusFilter(value)}>
+                <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${statusMeta(value).dot}`} />
+                {label}
+              </FilterChip>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
@@ -140,6 +178,21 @@ function ViewTab({ active, onClick, children }: { active: boolean; onClick: () =
         active
           ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
           : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
+        active
+          ? "border-[#0b3d5c] bg-[#0b3d5c] text-white"
+          : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
       }`}
     >
       {children}
