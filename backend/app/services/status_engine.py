@@ -16,10 +16,15 @@ from app.sources.base import RawReport
 
 
 def _ports_match(a: str, b: str) -> bool:
+    """Case/whitespace-insensitive port-name comparison, since a raw source report and a
+    vessel's configured destination_port are just free-text strings that should still be
+    treated as the same port even if capitalised differently."""
     return a.strip().casefold() == b.strip().casefold()
 
 
 def derive_event_type(report: RawReport, destination_port: str | None) -> EventType:
+    """Turn one raw tracking report into a dashboard-ready EventType, following the four-step
+    flow described in the module docstring above."""
     has_destination = bool(destination_port)
     at_destination = has_destination and _ports_match(report.event_port, destination_port)
 
@@ -30,11 +35,15 @@ def derive_event_type(report: RawReport, destination_port: str | None) -> EventT
     if at_destination:
         return EventType.SAILED_FROM_DESTINATION
     if has_destination:
+        # Underway with a destination set, but not departing *from* that destination itself -
+        # i.e. this is progress toward it, hence "ETA to Destination" rather than plain sailing.
         return EventType.ETA_DESTINATION
     return EventType.SAILING
 
 
 def format_last_event_text(report: RawReport) -> str:
+    """Build the human-readable "Last Event" string shown on the dashboard (Section 3.4), e.g.
+    "Arrived Shanghai — 20 Jul 2026, 08:00" or "Sailed Shanghai — 23 Jul 2026, 14:00"."""
     verb = "Arrived" if report.event_kind == "arrived" else "Sailed"
     timestamp = report.occurred_at.strftime("%d %b %Y, %H:%M")
     return f"{verb} {report.event_port} — {timestamp}"

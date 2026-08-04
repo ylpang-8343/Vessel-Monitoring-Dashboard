@@ -23,6 +23,16 @@ def _as_naive_utc(value: datetime) -> datetime:
 
 
 def run_archive_sweep(db: Session, retention_days: int | None = None) -> int:
+    """Archive every active vessel whose latest event is ARRIVED_DESTINATION and has sat there
+    longer than the retention window. Called automatically on every tracking-poll tick (see
+    services/tracking_worker.py) - there is no separate schedule or API endpoint for it.
+
+    `retention_days` defaults to `settings.arrived_retention_days`; tests (and, briefly, manual
+    verification passes) can override it to make the sweep's effect observable immediately
+    instead of waiting real days.
+
+    Returns the number of vessels archived, mostly for logging/test assertions.
+    """
     retention = timedelta(days=retention_days if retention_days is not None else settings.arrived_retention_days)
     cutoff = _as_naive_utc(datetime.now(timezone.utc)) - retention
 

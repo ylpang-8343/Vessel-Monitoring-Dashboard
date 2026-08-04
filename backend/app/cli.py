@@ -16,6 +16,11 @@ from app.models import User, UserRole
 
 
 def promote_admin(email: str) -> None:
+    """Set an already-registered account's role to ADMIN.
+
+    Requires the account to already exist (created by registering through the web app first) -
+    this command only changes a role, it doesn't create accounts.
+    """
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == email).first()
@@ -35,6 +40,9 @@ def promote_admin(email: str) -> None:
 
 
 def main() -> None:
+    """Entry point for `python -m app.cli <command> ...`. Currently only one subcommand exists
+    (`promote-admin`); structured with argparse subparsers so more can be added later without
+    changing the invocation style."""
     parser = argparse.ArgumentParser(description="Vessel Monitoring Dashboard admin CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

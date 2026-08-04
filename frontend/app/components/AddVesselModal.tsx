@@ -12,6 +12,9 @@ import { COMMON_DESTINATION_PORTS } from "@/lib/constants";
 
 type Tab = "single" | "bulk";
 
+// The "+ Add" modal (Section 3.2's "two-option form": add a single vessel manually, or
+// bulk-import many at once). `onImported` is called after either path successfully adds at
+// least one vessel, so the dashboard can refresh its list.
 export default function AddVesselModal({
   onClose,
   onImported,
@@ -75,10 +78,13 @@ function TabButton({
   );
 }
 
+// "Single Vessel" tab of the Add Vessel modal (Section 3.1).
 function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [name, setName] = useState("");
   const [imo, setImo] = useState("");
   const [destination, setDestination] = useState("");
+  // Whether the destination field is a free-text input instead of the preset <select> - flipped
+  // on once the user picks "Other (type manually)…" below.
   const [customDestination, setCustomDestination] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -120,6 +126,8 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
         <input
           required
           value={imo}
+          // Strip non-digits and cap at 7 characters as the user types, so the field can never
+          // even contain an invalid IMO - the backend still re-validates on submit regardless.
           onChange={(e) => setImo(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))}
           placeholder="7-digit number"
           className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
@@ -187,6 +195,8 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
   );
 }
 
+// "Bulk Upload" tab of the Add Vessel modal (Section 3.2) - two-step flow: pick a file to get
+// an editable preview (`rows`), fix up anything flagged, then import only the "ok" rows.
 function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [rows, setRows] = useState<BulkUploadRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +204,8 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
   const [importing, setImporting] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
 
+  /** Send the picked file to the backend for parsing/AI-extraction and populate the preview
+   * table. Nothing is imported at this point - see handleImport. */
   async function handleFile(file: File) {
     setError(null);
     setLoading(true);
@@ -209,6 +221,9 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
     }
   }
 
+  /** Apply an inline edit to one preview row (e.g. the user typed in a corrected IMO number)
+   * and re-run client-side validation on just that row, so its status/message update live
+   * without waiting for another round-trip to the server. */
   function updateRow(index: number, patch: Partial<BulkUploadRow>) {
     setRows((prev) =>
       prev.map((r, i) => {
@@ -230,6 +245,8 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
     );
   }
 
+  /** Import only the rows currently flagged "ok" - duplicate/invalid rows are left out
+   * entirely rather than sent to the backend, which is the final gate against bad data. */
   async function handleImport() {
     const importable = rows.filter((r) => r.status === "ok" && r.name && r.imo_number);
     if (importable.length === 0) return;

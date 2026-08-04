@@ -29,6 +29,8 @@ class TrackingSourceAdapter(ABC):
     the status engine and dashboard never need to change.
     """
 
+    # Matches TrackingSource.adapter_key in models.py - identifies which adapter implementation
+    # a given TrackingSource row should be polled with.
     adapter_key: str
 
     @abstractmethod

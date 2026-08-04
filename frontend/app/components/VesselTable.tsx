@@ -4,6 +4,9 @@ import { useRouter } from "next/navigation";
 import type { Vessel } from "@/lib/api";
 import StatusDot from "./StatusDot";
 
+// Main dashboard table (Section 3.4) - shared between the Active and Archived tabs (the caller
+// just passes a differently-filtered `vessels` list; this component doesn't know or care which
+// tab it's rendering for). Clicking any row navigates to that vessel's full history page.
 export default function VesselTable({ vessels }: { vessels: Vessel[] }) {
   const router = useRouter();
 
@@ -39,11 +42,15 @@ export default function VesselTable({ vessels }: { vessels: Vessel[] }) {
             <td className="px-6 py-3">{v.current_location ?? "—"}</td>
             <td className="px-6 py-3">
               {v.last_event_text ? (
+                // Combines a colour-coded dot (6.E) with the full "what/where/when" text
+                // (Section 3.4) in one column, rather than a separate status badge.
                 <span className="flex items-center gap-2">
                   <StatusDot eventType={v.last_event_type} />
                   {v.last_event_text}
                 </span>
               ) : (
+                // No StatusEvent rows yet - the vessel was just registered and hasn't been
+                // through a tracking-worker poll cycle.
                 <span className="text-zinc-400">Awaiting first tracking update…</span>
               )}
             </td>

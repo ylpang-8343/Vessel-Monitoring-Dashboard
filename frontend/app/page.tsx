@@ -24,6 +24,9 @@ const STATUS_FILTERS: { value: EventType; label: string }[] = [
   { value: "arrived_destination", label: "Arrived at Destination" },
 ];
 
+// Main dashboard (Section 3.4) - the app's home page ("/"). Combines the Active/Archived tabs
+// (Section 3.7/3.8), free-text search (6.A), status filter chips (6.D), and the vessel table
+// into one view, all driven by a single `refresh()` call whenever any of their state changes.
 export default function DashboardPage() {
   const { user } = useAuth();
   const [view, setView] = useState<View>("active");
@@ -60,6 +63,10 @@ export default function DashboardPage() {
     }
   }, [view, debouncedSearch, statusFilter]);
 
+  // Single effect drives both the initial load and the periodic auto-refresh, and re-fires
+  // whenever `refresh` itself changes identity (i.e. whenever view/search/statusFilter change) -
+  // this refetches once for the state change and correctly resets the interval timer, rather
+  // than needing two separate effects that could disagree about which state is current.
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -170,6 +177,7 @@ export default function DashboardPage() {
   );
 }
 
+// Active/Archived tab button.
 function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -185,6 +193,7 @@ function ViewTab({ active, onClick, children }: { active: boolean; onClick: () =
   );
 }
 
+// One status filter pill (Section 6.D), including the "All" pill that clears the filter.
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button

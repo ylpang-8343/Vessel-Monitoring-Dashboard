@@ -11,6 +11,10 @@ const HISTORY_REFRESH_MS = 30 * 1000;
 
 type ConfirmAction = "archive" | "remove" | null;
 
+// Single-vessel history page (Section 3.5) at "/vessels/[imo]" - the full movement timeline
+// plus the manual archive/remove actions (Section 3.8). `params` is a Promise here (not a plain
+// object) per this Next.js version's App Router API - see frontend/AGENTS.md - unwrapped with
+// React's `use()`.
 export default function VesselHistoryPage({ params }: { params: Promise<{ imo: string }> }) {
   const { imo } = use(params);
   const router = useRouter();
@@ -41,6 +45,8 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
     return () => clearInterval(interval);
   }, [refresh]);
 
+  /** Manual archive (Section 3.8) - a two-step confirm (see the `confirming` state / ConfirmBar
+   * below) since it's a one-way action. */
   async function handleArchive() {
     setActioning(true);
     setActionError(null);
@@ -55,6 +61,8 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
     }
   }
 
+  /** Manual permanent delete (Section 3.8) - unlike archive, this navigates away afterwards
+   * since the vessel (and this page's own data) no longer exists. */
   async function handleRemove() {
     setActioning(true);
     setActionError(null);
@@ -197,6 +205,9 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
   );
 }
 
+// Shared "are you sure?" bar for both the archive and remove actions above - which one is
+// showing is driven entirely by the caller's props (message/label/colour/handler), not by any
+// state of its own.
 function ConfirmBar({
   message,
   confirmLabel,
@@ -235,6 +246,7 @@ function ConfirmBar({
   );
 }
 
+// One label/value pair in the header's stat grid (Current Status, Destination, etc.).
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>

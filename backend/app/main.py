@@ -1,3 +1,8 @@
+"""FastAPI application entry point: wires up routers, auth gating, CORS, and startup/shutdown.
+
+Run with `uvicorn app.main:app` (see README.md).
+"""
+
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -23,6 +28,10 @@ SEED_SOURCES = [
 
 
 def _seed_tracking_sources() -> None:
+    """Insert the default tracking-source catalogue on startup if it isn't already there
+    (matched by name), so a fresh database always has something to show under Settings →
+    Tracking Sources without requiring manual setup. Safe to call on every startup - existing
+    rows (including any an admin has since edited) are left untouched."""
     db = SessionLocal()
     try:
         for name, url, adapter_key, enabled in SEED_SOURCES:
@@ -39,6 +48,9 @@ def _seed_tracking_sources() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Runs once at startup (before the app accepts requests) and once at shutdown. Creates any
+    missing tables, seeds the tracking-source catalogue, and starts/stops the background
+    tracking-poll scheduler (services/tracking_worker.py)."""
     Base.metadata.create_all(bind=engine)
     _seed_tracking_sources()
     start_scheduler()
@@ -48,6 +60,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Vessel Monitoring Dashboard API", lifespan=lifespan)
 
+# Credentialed CORS (cookies sent cross-origin between the :3000 frontend and this :8000 API)
+# requires an explicit origin list - "*" is not allowed together with allow_credentials=True.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -56,11 +70,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Auth endpoints themselves must stay unauthenticated (you can't require a login to log in);
+# the users-management endpoints enforce admin access internally via each route's own
+# `Depends(require_admin)` in routers/users.py.
 app.include_router(auth.router)
 app.include_router(users.router)
 
 # Whole app requires login; Settings/tracking-source management additionally requires admin
 # (Section 3.9 - "Admin users can add, edit, and remove vessel tracking website sources").
+# Applying the dependency at include_router() level (rather than per-route) guarantees every
+# current and future route on these routers is covered automatically.
 app.include_router(vessels.router, dependencies=[Depends(get_current_user)])
 app.include_router(history.router, dependencies=[Depends(get_current_user)])
 app.include_router(bulk_upload.router, dependencies=[Depends(get_current_user)])
@@ -69,4 +88,6 @@ app.include_router(tracking_sources.router, dependencies=[Depends(require_admin)
 
 @app.get("/api/health")
 def health():
+    """Trivial liveness check - not gated by auth, used for local `curl` sanity checks and
+    could back a container/orchestrator health probe later."""
     return {"status": "ok"}

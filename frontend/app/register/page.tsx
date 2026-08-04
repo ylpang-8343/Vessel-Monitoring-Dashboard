@@ -5,6 +5,9 @@ import Link from "next/link";
 import { ApiError, register } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
 
+// Mirrors validate_password_complexity() in backend/app/schemas.py - kept as a separate literal
+// list (not shared code) so the checklist can render live per-rule feedback as the user types.
+// The backend re-validates the same rules regardless; this is purely for UX.
 const RULES: { label: string; test: (v: string) => boolean }[] = [
   { label: "At least 8 characters", test: (v) => v.length >= 8 },
   { label: "One uppercase letter", test: (v) => /[A-Z]/.test(v) },
@@ -12,6 +15,9 @@ const RULES: { label: string; test: (v: string) => boolean }[] = [
   { label: "One symbol", test: (v) => /[^A-Za-z0-9]/.test(v) },
 ];
 
+// The other public route (see AuthProvider's PUBLIC_PATHS). Always results in a `user`-role
+// account server-side - there's no "become admin" option here or anywhere in the UI, by design
+// (see README.md's "First-time setup" section).
 export default function RegisterPage() {
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
@@ -21,8 +27,12 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
 
   const failedRules = RULES.filter((rule) => !rule.test(password));
+  // Don't show a "doesn't match" error before the user has typed anything into confirm yet.
   const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
 
+  /** Client-side re-check of the same rules the checklist already shows live, so submitting
+   * with an invalid password gives an immediate error instead of a round-trip to the backend
+   * (which would reject it anyway via UserRegister's validators). */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);

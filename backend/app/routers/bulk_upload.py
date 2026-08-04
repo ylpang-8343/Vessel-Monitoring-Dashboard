@@ -1,3 +1,7 @@
+"""Bulk vessel import (Section 3.2): Excel/CSV parsed directly, PDF via AI extraction. Always a
+two-step flow - /preview returns rows for the user to review/correct in the frontend's editable
+table, and only /import actually writes anything, so nothing is ever imported silently."""
+
 import io
 
 import pandas as pd
@@ -18,6 +22,8 @@ from app.services.pdf_extraction import extract_vessel_rows
 
 router = APIRouter(prefix="/api/vessels/bulk", tags=["bulk-upload"])
 
+# Recognised column headers for Excel/CSV uploads, so a template with either "IMO" or
+# "IMO Number" (etc.) both map to the same internal field name.
 COLUMN_ALIASES = {
     "vessel name": "name",
     "name": "name",
@@ -29,15 +35,23 @@ COLUMN_ALIASES = {
 
 
 def _normalise_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename whatever columns the uploaded file has (via COLUMN_ALIASES) onto our internal
+    field names, and make sure all three expected columns exist (as None) even if the file is
+    missing one entirely - downstream code can then assume all three keys are always present."""
     df = df.rename(columns={c: COLUMN_ALIASES.get(str(c).strip().lower(), str(c)) for c in df.columns})
     for col in ("name", "imo_number", "destination_port"):
         if col not in df.columns:
             df[col] = None
+    # pandas represents missing Excel/CSV cells as NaN, which isn't JSON-serialisable the way
+    # None is - normalise all of them to None here, once, instead of downstream.
     df = df.where(pd.notnull(df), None)
     return df
 
 
 def _validate_rows(raw_rows: list[dict], db: Session) -> list[BulkUploadRow]:
+    """Classify every parsed/extracted row as ok/invalid/duplicate for the preview response.
+    This is preview-time validation only - /import below re-validates duplicates itself rather
+    than trusting that nothing changed between preview and import."""
     seen_imos: set[str] = set()
     results: list[BulkUploadRow] = []
 
@@ -72,6 +86,8 @@ def _validate_rows(raw_rows: list[dict], db: Session) -> list[BulkUploadRow]:
             )
             continue
 
+        # Duplicate against both rows already seen earlier in *this* file and vessels already
+        # in the database, so two rows with the same IMO in one upload don't both show "ok".
         if imo in seen_imos or db.query(Vessel).filter(Vessel.imo_number == imo).first():
             results.append(
                 BulkUploadRow(
@@ -101,6 +117,8 @@ def _validate_rows(raw_rows: list[dict], db: Session) -> list[BulkUploadRow]:
 
 @router.post("/preview", response_model=BulkUploadPreview)
 async def preview_bulk_upload(file: UploadFile, db: Session = Depends(get_db)):
+    """Parse an uploaded .xlsx/.csv/.pdf into rows for the frontend's editable preview table.
+    Writes nothing to the database - see module docstring."""
     filename = (file.filename or "").lower()
     content = await file.read()
 
@@ -114,6 +132,9 @@ async def preview_bulk_upload(file: UploadFile, db: Session = Depends(get_db)):
         try:
             raw_rows = extract_vessel_rows(content)
         except RuntimeError as exc:
+            # extract_vessel_rows raises RuntimeError specifically when no API key is
+            # configured - surface that as a clear "unavailable" response rather than a generic
+            # 500, since Excel/CSV upload should keep working regardless.
             raise HTTPException(status_code=503, detail=str(exc))
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type — use .xlsx, .csv, or .pdf")
@@ -123,6 +144,10 @@ async def preview_bulk_upload(file: UploadFile, db: Session = Depends(get_db)):
 
 @router.post("/import", response_model=BulkImportResult)
 def import_bulk_rows(payload: BulkImportRequest, db: Session = Depends(get_db)):
+    """Actually create vessels from rows the user has reviewed (and the frontend has already
+    filtered down to status=="ok"). Still re-checks for duplicate IMOs here - both against each
+    other within this request and against the database - since time may have passed since the
+    preview was generated."""
     imported = []
     skipped = []
     seen_imos: set[str] = set()

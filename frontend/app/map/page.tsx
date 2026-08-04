@@ -19,6 +19,9 @@ const VesselMap = dynamic(() => import("@/app/components/VesselMap"), {
 
 const MAP_REFRESH_MS = 5 * 60 * 1000;
 
+// Page shell for Map View (Section 6.B) at "/map" - fetches the active-vessel list itself and
+// hands it to the (dynamically-loaded) VesselMap component to render. Reachable by any logged-in
+// user, not just admins - unlike /settings, this route has no extra role check.
 export default function MapPage() {
   const [vessels, setVessels] = useState<Vessel[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +29,7 @@ export default function MapPage() {
 
   const refresh = useCallback(async () => {
     try {
+      // Only active vessels are plotted - archived ones are no longer "live positions".
       const data = await listVessels({ archived: false });
       setVessels(data);
       setError(null);

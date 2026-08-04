@@ -5,6 +5,10 @@ import Link from "next/link";
 import { ApiError, login } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
 
+// One of the two public routes (see AuthProvider's PUBLIC_PATHS). On success, `refresh()`
+// updates the global auth context, which triggers AuthProvider's own redirect away from here
+// (rather than this component navigating directly) - keeps the "where do I go after login"
+// logic in one place.
 export default function LoginPage() {
   const { refresh } = useAuth();
   const [email, setEmail] = useState("");
@@ -20,6 +24,8 @@ export default function LoginPage() {
       await login({ email, password });
       await refresh();
     } catch (err) {
+      // Deliberately generic on the backend side too (see routers/auth.py) - doesn't reveal
+      // whether the email exists or the password was wrong.
       setError(err instanceof ApiError ? err.message : "Failed to log in");
       setSubmitting(false);
     }

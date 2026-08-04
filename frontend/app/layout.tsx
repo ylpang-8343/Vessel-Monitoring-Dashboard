@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   description: "Unified vessel tracking, history, and status monitoring",
 };
 
+// Root layout shared by every route (Next.js App Router convention). Wrapping everything in
+// AuthProvider here - rather than per-page - is what makes the whole app require login by
+// default, with each page only needing to worry about its own content.
 export default function RootLayout({
   children,
 }: Readonly<{

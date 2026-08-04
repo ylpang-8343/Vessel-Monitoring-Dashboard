@@ -18,6 +18,8 @@ import UserMenu from "@/app/components/UserMenu";
 
 type SettingsTab = "sources" | "users";
 
+// Admin-only Settings page at "/settings" (Section 3.9 + user-role management). AuthProvider
+// already redirects non-admins away before this ever renders, so no role check is needed here.
 export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("sources");
 
@@ -55,6 +57,7 @@ export default function SettingsPage() {
   );
 }
 
+// "Tracking Sources" / "Users" tab button.
 function SettingsTabButton({
   active,
   onClick,
@@ -78,6 +81,9 @@ function SettingsTabButton({
   );
 }
 
+// Settings → Tracking Sources tab (Section 3.9): list/add/edit/remove tracking sources, plus a
+// client-side search over the already-fetched list (small, fixed-size catalogue - no need for
+// a server round-trip per keystroke like the dashboard's search).
 function TrackingSourcesTab() {
   const [sources, setSources] = useState<TrackingSource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +109,8 @@ function TrackingSourcesTab() {
     })();
   }, [refresh]);
 
+  // Matches on name or URL only, not Kind - deliberately, since Kind already has its own
+  // visible column and isn't what an admin would be searching for.
   const filteredSources = sources.filter((s) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
@@ -178,6 +186,9 @@ function TrackingSourcesTab() {
   );
 }
 
+// Settings → Users tab: list every account and promote/demote roles, with a client-side email
+// search. `currentUser` (from AuthProvider) is needed to know which row is "you" and to refresh
+// global auth state on self-demotion (see UserRow below).
 function UsersTab() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
@@ -266,6 +277,9 @@ function UsersTab() {
   );
 }
 
+// One row in the Users table - the Promote/Demote button and its confirmation-free toggle
+// action. `isLastAdmin` is computed by the parent from the *unfiltered* user list (see
+// UsersTab's adminCount above) so the guard stays correct regardless of the current search.
 function UserRow({
   user,
   isSelf,
@@ -281,6 +295,9 @@ function UserRow({
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
+  /** Flip this user's role. The backend rejects demoting the last admin with a 409 regardless
+   * of what the `isLastAdmin` prop already disabled client-side - that's the actual source of
+   * truth, this UI state is just for a better error-free experience. */
   async function toggleRole() {
     setBusy(true);
     setRowError(null);
@@ -336,6 +353,8 @@ function UserRow({
   );
 }
 
+// One row in the Tracking Sources table - inline edit (name/URL), enabled/disabled toggle, and
+// a two-step delete confirmation, all self-contained per row.
 function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(source.name);
@@ -344,8 +363,12 @@ function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: (
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
+  // Only the seeded mock source is ever actually polled - every other source (including any
+  // new one an admin adds here) is catalogued but inert, hence the "Not yet connected" badge.
   const isConnected = source.adapter_key === "mock";
 
+  /** Toggling this is what actually pauses/resumes the tracking worker for the mock source -
+   * see backend services/tracking_worker.py's `mock_source_enabled` check. */
   async function toggleEnabled() {
     setBusy(true);
     setRowError(null);
@@ -485,6 +508,10 @@ function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: (
   );
 }
 
+// Inline "+ Add Source" form (Section 3.9), shown instead of the button once clicked. New
+// sources are always inert (see the `adapter_key: "unavailable"` comment below) - there's no
+// way to add a *functional* new source through the UI, since that would require real adapter
+// code, not just a database row.
 function AddSourceForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");

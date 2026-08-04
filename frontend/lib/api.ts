@@ -1,5 +1,12 @@
+// Thin typed wrapper around the backend REST API. Every exported function here corresponds to
+// exactly one backend endpoint (see backend/app/routers/*.py) - components call these instead
+// of using `fetch` directly, so the request shape, auth cookie handling, and error handling
+// only need to be right in one place.
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Mirrors backend/app/models.py's EventType enum exactly - keep these in sync by hand, since
+// the two sides aren't code-generated from a shared source.
 export type EventType =
   | "sailing"
   | "at_port"
@@ -16,6 +23,9 @@ export interface User {
   created_at: string;
 }
 
+// Matches backend VesselOut - a vessel's own fields plus its latest event flattened in
+// (current_location/last_event_*/source_name), so no separate lookup is needed to show a
+// vessel's current status.
 export interface Vessel {
   id: number;
   name: string;
@@ -39,6 +49,7 @@ export interface TrackingSource {
   enabled: boolean;
 }
 
+// One row of a vessel's movement timeline (Section 3.5).
 export interface StatusEvent {
   id: number;
   event_type: EventType;
@@ -54,6 +65,7 @@ export interface VesselHistory {
   timeline: StatusEvent[];
 }
 
+// One row of a bulk-upload preview (Section 3.2), before the user has confirmed import.
 export interface BulkUploadRow {
   row_number: number;
   name: string | null;
@@ -68,6 +80,8 @@ export interface BulkImportResult {
   skipped: BulkUploadRow[];
 }
 
+/** Thrown by every API call below on a non-2xx response, carrying the HTTP status and the
+ * backend's error `detail` message (falling back to the status text if the body isn't JSON). */
 class ApiError extends Error {
   constructor(
     message: string,
@@ -77,6 +91,8 @@ class ApiError extends Error {
   }
 }
 
+/** Shared response handling for every apiFetch call: throws ApiError on failure, returns
+ * parsed JSON on success (or undefined for a 204 No Content). */
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
@@ -99,6 +115,8 @@ function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include",
+    // Skip setting Content-Type for FormData bodies (bulk-upload file uploads) - the browser
+    // needs to set its own multipart boundary, which providing our own header would break.
     headers: init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
   });
 }
@@ -119,6 +137,8 @@ export async function logout(): Promise<void> {
   return handle(await apiFetch("/api/auth/logout", { method: "POST" }));
 }
 
+/** Who's currently logged in, based on the session cookie - used by AuthProvider on every page
+ * load. Rejects with a 401 ApiError when nobody is logged in. */
 export async function getCurrentUser(): Promise<User> {
   return handle(await apiFetch("/api/auth/me", { cache: "no-store" }));
 }
@@ -131,6 +151,9 @@ export async function updateUserRole(id: number, role: UserRole): Promise<User> 
   return handle(await apiFetch(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }));
 }
 
+/** List vessels for the dashboard. `query` is the free-text search (6.A), `archived` switches
+ * between the Active/Archived tabs, and `status` is a 6.D filter chip - all three compose as an
+ * AND when combined, matching the backend's GET /api/vessels query params. */
 export async function listVessels(opts?: {
   query?: string;
   archived?: boolean;
@@ -163,12 +186,15 @@ export async function getVesselHistory(imo: string): Promise<VesselHistory> {
   return handle(await apiFetch(`/api/vessels/${imo}/history`, { cache: "no-store" }));
 }
 
+/** Upload a .xlsx/.csv/.pdf for the editable bulk-upload preview (Section 3.2) - doesn't
+ * import anything yet, see importBulkRows. */
 export async function previewBulkUpload(file: File): Promise<{ rows: BulkUploadRow[] }> {
   const formData = new FormData();
   formData.append("file", file);
   return handle(await apiFetch("/api/vessels/bulk/preview", { method: "POST", body: formData }));
 }
 
+/** Actually create vessels from rows the user has reviewed in the preview table. */
 export async function importBulkRows(
   rows: { name: string; imo_number: string; destination_port?: string | null }[],
 ): Promise<BulkImportResult> {

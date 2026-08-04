@@ -32,7 +32,14 @@ const DESTINATION_ICON = L.divIcon({
   iconAnchor: [10, 10],
 });
 
+// Map View (Section 6.B) - a real OpenStreetMap-tiled Leaflet map showing every active
+// vessel's current position plus fixed markers for the known destination ports. Rendered via
+// `next/dynamic({ ssr: false })` from app/map/page.tsx, since Leaflet touches `window` at
+// import time and would crash a server render.
 export default function VesselMap({ vessels }: { vessels: Vessel[] }) {
+  // Split vessels into those whose current_location we have real coordinates for vs. not,
+  // rather than silently dropping the ones we can't place (see the "Not shown on map" list
+  // below).
   const plottable = useMemo(
     () => vessels.filter((v) => v.current_location && LOCATION_COORDS[v.current_location]),
     [vessels],
@@ -42,6 +49,9 @@ export default function VesselMap({ vessels }: { vessels: Vessel[] }) {
     [vessels],
   );
 
+  // Auto-fit the initial view to whatever's actually being shown (vessels + destination ports)
+  // instead of a fixed zoom, so the map is useful whether there's one vessel or twenty spread
+  // across different regions.
   const bounds = useMemo(() => {
     const points: [number, number][] = plottable.map((v) => LOCATION_COORDS[v.current_location!]);
     DESTINATION_PORTS.forEach((port) => points.push(LOCATION_COORDS[port]));
