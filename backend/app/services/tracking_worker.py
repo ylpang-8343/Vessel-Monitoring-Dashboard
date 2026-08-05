@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import StatusEvent, TrackingSource, Vessel
 from app.services.archive_worker import run_archive_sweep
+from app.services.notification_service import notify_vessel_event
 from app.services.status_engine import derive_event_type, format_last_event_text
 from app.sources.mock_adapter import MockAdapter
 
@@ -60,6 +61,10 @@ def run_tracking_poll() -> int:
 
         reports = _adapter.poll(imos, destinations)
         created = 0
+        # Collected so notifications (Section 6.C) can be sent *after* commit below, once each
+        # event actually has a persisted id - the poll's own success doesn't depend on
+        # notifications succeeding, so this list is processed in a separate try/except pass.
+        new_events: list[tuple[Vessel, StatusEvent]] = []
         for report in reports:
             vessel = vessel_by_imo.get(report.vessel_imo)
             if vessel is None:
@@ -76,9 +81,20 @@ def run_tracking_poll() -> int:
                 occurred_at=report.occurred_at,
             )
             db.add(event)
+            new_events.append((vessel, event))
             created += 1
         db.commit()
         logger.info("tracking poll: recorded %d status events", created)
+
+        # Notify (Section 6.C) for every event just recorded. Each call is independently
+        # wrapped - a bad SMTP/Teams config, or an unexpected error in one notification, must
+        # never take down the tracking poll that vessel data already successfully persisted.
+        for vessel, event in new_events:
+            try:
+                notify_vessel_event(db, vessel, event)
+            except Exception:
+                logger.exception("notification failed for vessel %s event %s", vessel.imo_number, event.id)
+
         return created
     finally:
         db.close()

@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.models import EventType, UserRole
+from app.models import EventType, NotificationChannel, NotificationStatus, UserRole
 
 
 def validate_imo(value: str) -> str:
@@ -224,3 +224,76 @@ class RoleUpdateRequest(BaseModel):
     last-admin guard applied when handling this."""
 
     role: UserRole
+
+
+class NotificationSettingsOut(BaseModel):
+    """Notification/report configuration as shown on Settings → Notifications (Section 6.C).
+
+    Deliberately omits `smtp_password` - the frontend never needs it back, only whether one is
+    already set (see `smtp_password_set`), so a saved password can never round-trip into a
+    browser response.
+    """
+
+    email_enabled: bool
+    smtp_host: str | None
+    smtp_port: int
+    smtp_username: str | None
+    smtp_password_set: bool
+    smtp_from_address: str | None
+    email_recipients: str | None
+
+    teams_enabled: bool
+    teams_webhook_url: str | None
+
+    daily_report_enabled: bool
+    daily_report_hour_utc: int
+    daily_report_last_sent_date: str | None
+
+
+class NotificationSettingsUpdate(BaseModel):
+    """Payload for PATCH /api/notifications/settings - every field optional so the Email and
+    Teams cards on the frontend can each save independently without clobbering the other's
+    fields. `smtp_password` is only updated when provided (omitted/None leaves the existing
+    stored password untouched, so re-saving the Email card doesn't force re-entering it)."""
+
+    email_enabled: bool | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_address: str | None = None
+    email_recipients: str | None = None
+
+    teams_enabled: bool | None = None
+    teams_webhook_url: str | None = None
+
+    daily_report_enabled: bool | None = None
+    daily_report_hour_utc: int | None = Field(default=None, ge=0, le=23)
+
+
+class NotificationLogOut(BaseModel):
+    """One row of the "recent notifications" table - lets an admin verify a channel is actually
+    working (or see exactly why it isn't) without digging through server logs."""
+
+    id: int
+    channel: NotificationChannel
+    status: NotificationStatus
+    subject: str
+    vessel_name: str | None
+    vessel_imo: str | None
+    detail: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReportSummaryOut(BaseModel):
+    """Data behind the Reports page (Section 7 / Phase 4) and its Excel/PDF exports - the same
+    three vessel categories, computed once and reused for the on-screen view and both file
+    formats. "Delayed vessels" (the proposal's fourth category) is intentionally not included -
+    see services/report_service.py's module docstring for why."""
+
+    active: list[VesselOut]
+    eta_to_destination: list[VesselOut]
+    arrived_at_destination: list[VesselOut]
+    generated_at: datetime

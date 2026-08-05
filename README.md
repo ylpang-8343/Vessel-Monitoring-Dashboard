@@ -1,6 +1,6 @@
-# Vessel Monitoring Dashboard — Phases 1-3
+# Vessel Monitoring Dashboard — Phases 1-4
 
-Implements Phases 1-3 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
+Implements Phases 1-4 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
 
 - **Phase 1**: vessel registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review),
   automated tracking via a pluggable source adapter (mock adapter for now — see below), dashboard
@@ -12,11 +12,16 @@ Implements Phases 1-3 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
   Destination / Arrived at Destination), status colour coding (6.E), and a live Map View (6.B) at
   `/map` using react-leaflet + OpenStreetMap tiles, plus search on the Settings → Tracking Sources
   and Settings → Users tables.
+- **Phase 4**: email + Microsoft Teams notifications (6.C) on vessel arrival/departure/arrival-at-
+  destination, configured at Settings → Notifications; a Reports page (`/reports`, Section 7) with
+  Active/ETA-to-Destination/Arrived-at-Destination vessel lists and Excel/PDF export; a daily
+  report on an admin-configurable schedule, delivered through the same two channels. See "Phase 4:
+  notifications and reports" below for what's deliberately out of scope and why.
 - **Auth**: email/password login and registration, gating the whole app. See "First-time setup"
   below — registering never grants admin, so there's a required bootstrap step.
 
-Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phases 4-5):
-notifications/reports, and the Container/Booking Tracking module.
+Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phase 5): the
+Container/Booking Tracking module.
 
 ## Why tracking data is simulated
 
@@ -79,6 +84,36 @@ promote or demote other users from Settings → Users — the CLI command is onl
 the very first one. The last remaining admin can't be demoted (by themselves or anyone else),
 since that would leave nobody able to manage roles at all.
 
+## Phase 4: notifications and reports
+
+Settings → Notifications (admin-only) has three independent cards:
+
+- **Email** — SMTP host/port/username/password, a from-address, and a comma-separated recipient
+  list. Standard `smtplib` + STARTTLS on whatever port you configure (587 is the common default) —
+  point it at a real provider (Gmail, Office 365, SendGrid, etc.) or a local debug SMTP server for
+  testing (e.g. `pip install aiosmtpd && python -m aiosmtpd -n -l localhost:1025`, though note a
+  bare debug server like that typically doesn't support STARTTLS, so delivery will correctly show
+  as `failed` with a clear reason rather than `sent` — that's the error-handling path working, not
+  a bug).
+- **Microsoft Teams** — a single incoming-webhook URL. Any endpoint that accepts a `POST` with a
+  `{"text": "..."}` JSON body works, including a real Teams incoming webhook.
+- **Daily Report** — an on/off toggle and a UTC hour; checked once an hour by a background job
+  (`backend/app/services/report_worker.py`), so it fires within the hour it's due rather than at
+  the exact minute.
+
+Both "Send Test Notification" and "Send Daily Report Now" trigger immediately, useful for
+confirming a channel actually works without waiting for a real vessel event or the scheduled hour.
+Every attempt (sent/skipped/failed) is logged in the "Recent Activity" table below, including
+*why* something was skipped or failed — nothing fails silently.
+
+**Deliberately not implemented**, matching Section 3.10's reasoning for the dashboard's own status
+values: ETA-change and delay notifications/reports, and WhatsApp (which the proposal's own Figure
+5 labels "planned for phase 2 rollout"). None of these have real underlying data to back them —
+see `backend/app/services/notification_service.py`'s and `report_service.py`'s module docstrings.
+
+Reports (`/reports`, reachable by any logged-in user, not just admins) covers Active Vessels, ETA
+to Destination, and Arrived at Destination, each exportable to Excel or PDF from the same page.
+
 ## Tests
 
 ```bash
@@ -107,3 +142,7 @@ pytest
   see `frontend/lib/portCoordinates.ts`. A vessel with an unrecognised location (e.g. a free-text
   destination the mock adapter never emits) is listed separately below the map instead of guessed
   at. Requires outbound access to `tile.openstreetmap.org` to load map tiles.
+- With `TRACKING_POLL_INTERVAL_SECONDS` lowered for testing, every enabled vessel produces a
+  notification roughly every tick - the "Recent Activity" log fills up fast and the daily report
+  you just sent can scroll out of the visible list within seconds. At the default 300s/5min
+  interval this isn't an issue; it's purely an artefact of speeding up the demo.

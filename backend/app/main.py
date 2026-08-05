@@ -12,7 +12,8 @@ from app.config import settings
 from app.db import Base, SessionLocal, engine
 from app.dependencies import get_current_user, require_admin
 from app.models import SourceKind, TrackingSource
-from app.routers import auth, bulk_upload, history, tracking_sources, users, vessels
+from app.routers import auth, bulk_upload, history, notifications, reports, tracking_sources, users, vessels
+from app.services import report_worker
 from app.services.tracking_worker import start_scheduler, stop_scheduler
 
 # adapter_key="mock" is the only one actually wired up to run (see sources/mock_adapter.py).
@@ -49,13 +50,16 @@ def _seed_tracking_sources() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Runs once at startup (before the app accepts requests) and once at shutdown. Creates any
-    missing tables, seeds the tracking-source catalogue, and starts/stops the background
-    tracking-poll scheduler (services/tracking_worker.py)."""
+    missing tables, seeds the tracking-source catalogue, and starts/stops the two background
+    schedulers: tracking-poll (services/tracking_worker.py) and the hourly daily-report check
+    (services/report_worker.py)."""
     Base.metadata.create_all(bind=engine)
     _seed_tracking_sources()
     start_scheduler()
+    report_worker.start_scheduler()
     yield
     stop_scheduler()
+    report_worker.stop_scheduler()
 
 
 app = FastAPI(title="Vessel Monitoring Dashboard API", lifespan=lifespan)
@@ -71,10 +75,11 @@ app.add_middleware(
 )
 
 # Auth endpoints themselves must stay unauthenticated (you can't require a login to log in);
-# the users-management endpoints enforce admin access internally via each route's own
-# `Depends(require_admin)` in routers/users.py.
+# the users-management and notifications endpoints enforce admin access internally via each
+# route's own `Depends(require_admin)` in routers/users.py and routers/notifications.py.
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(notifications.router)
 
 # Whole app requires login; Settings/tracking-source management additionally requires admin
 # (Section 3.9 - "Admin users can add, edit, and remove vessel tracking website sources").
@@ -83,6 +88,7 @@ app.include_router(users.router)
 app.include_router(vessels.router, dependencies=[Depends(get_current_user)])
 app.include_router(history.router, dependencies=[Depends(get_current_user)])
 app.include_router(bulk_upload.router, dependencies=[Depends(get_current_user)])
+app.include_router(reports.router, dependencies=[Depends(get_current_user)])
 app.include_router(tracking_sources.router, dependencies=[Depends(require_admin)])
 
 

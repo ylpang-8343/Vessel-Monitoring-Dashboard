@@ -39,10 +39,13 @@ def _seed_mock_source(_clean_db):
 
 @pytest.fixture(autouse=True)
 def _no_background_scheduler(monkeypatch):
-    # Keep API tests deterministic: the real tracking worker runs on a background
-    # thread against a live poll interval, which isn't relevant to these tests.
+    # Keep API tests deterministic: the real tracking worker and the daily-report checker both
+    # run on background threads (against a live poll interval / wall-clock hour respectively),
+    # neither of which is relevant to these tests.
     monkeypatch.setattr("app.main.start_scheduler", lambda: None)
     monkeypatch.setattr("app.main.stop_scheduler", lambda: None)
+    monkeypatch.setattr("app.main.report_worker.start_scheduler", lambda: None)
+    monkeypatch.setattr("app.main.report_worker.stop_scheduler", lambda: None)
 
 
 @pytest.fixture

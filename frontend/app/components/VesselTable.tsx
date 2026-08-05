@@ -6,16 +6,21 @@ import StatusDot from "./StatusDot";
 
 // Main dashboard table (Section 3.4) - shared between the Active and Archived tabs (the caller
 // just passes a differently-filtered `vessels` list; this component doesn't know or care which
-// tab it's rendering for). Clicking any row navigates to that vessel's full history page.
-export default function VesselTable({ vessels }: { vessels: Vessel[] }) {
+// tab it's rendering for) and, with a custom `emptyMessage`, the Reports page's three category
+// tables (Section 9 Phase 4) - a report category being empty doesn't mean *no vessels exist at
+// all*, so it needs its own wording rather than defaulting to the dashboard's "+ Add" prompt.
+// Clicking any row navigates to that vessel's full history page.
+export default function VesselTable({
+  vessels,
+  emptyMessage = 'No vessels registered yet. Click "+ Add" to start monitoring one.',
+}: {
+  vessels: Vessel[];
+  emptyMessage?: string;
+}) {
   const router = useRouter();
 
   if (vessels.length === 0) {
-    return (
-      <div className="px-6 py-16 text-center text-sm text-zinc-500">
-        No vessels registered yet. Click &quot;+ Add&quot; to start monitoring one.
-      </div>
-    );
+    return <div className="px-6 py-16 text-center text-sm text-zinc-500">{emptyMessage}</div>;
   }
 
   return (

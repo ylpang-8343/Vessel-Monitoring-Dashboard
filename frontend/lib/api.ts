@@ -80,6 +80,47 @@ export interface BulkImportResult {
   skipped: BulkUploadRow[];
 }
 
+// Matches backend NotificationSettingsOut - `smtp_password_set` stands in for the actual
+// password, which the API never sends back (see backend/app/schemas.py's docstring).
+export interface NotificationSettings {
+  email_enabled: boolean;
+  smtp_host: string | null;
+  smtp_port: number;
+  smtp_username: string | null;
+  smtp_password_set: boolean;
+  smtp_from_address: string | null;
+  email_recipients: string | null;
+  teams_enabled: boolean;
+  teams_webhook_url: string | null;
+  daily_report_enabled: boolean;
+  daily_report_hour_utc: number;
+  daily_report_last_sent_date: string | null;
+}
+
+export type NotificationChannelKind = "email" | "teams";
+export type NotificationLogStatus = "sent" | "skipped" | "failed";
+
+// One row of the Settings → Notifications "recent activity" table.
+export interface NotificationLogEntry {
+  id: number;
+  channel: NotificationChannelKind;
+  status: NotificationLogStatus;
+  subject: string;
+  vessel_name: string | null;
+  vessel_imo: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
+// Matches backend ReportSummaryOut (Section 7 / Phase 4) - the same three vessel-category
+// lists shown on the Reports page and behind both file exports.
+export interface ReportSummary {
+  active: Vessel[];
+  eta_to_destination: Vessel[];
+  arrived_at_destination: Vessel[];
+  generated_at: string;
+}
+
 /** Thrown by every API call below on a non-2xx response, carrying the HTTP status and the
  * backend's error `detail` message (falling back to the status text if the body isn't JSON). */
 class ApiError extends Error {
@@ -224,6 +265,80 @@ export async function updateTrackingSource(
 
 export async function deleteTrackingSource(id: number): Promise<void> {
   return handle(await apiFetch(`/api/tracking-sources/${id}`, { method: "DELETE" }));
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  return handle(await apiFetch("/api/notifications/settings", { cache: "no-store" }));
+}
+
+/** Partial update - only pass the fields that changed (mirrors the backend PATCH's
+ * exclude_unset behaviour), so saving the Email card never clobbers the Teams fields. */
+export async function updateNotificationSettings(
+  patch: Partial<{
+    email_enabled: boolean;
+    smtp_host: string;
+    smtp_port: number;
+    smtp_username: string;
+    smtp_password: string;
+    smtp_from_address: string;
+    email_recipients: string;
+    teams_enabled: boolean;
+    teams_webhook_url: string;
+    daily_report_enabled: boolean;
+    daily_report_hour_utc: number;
+  }>,
+): Promise<NotificationSettings> {
+  return handle(await apiFetch("/api/notifications/settings", { method: "PATCH", body: JSON.stringify(patch) }));
+}
+
+export async function listNotificationLog(): Promise<NotificationLogEntry[]> {
+  return handle(await apiFetch("/api/notifications/log", { cache: "no-store" }));
+}
+
+/** Send a one-off test message through every enabled channel right now. */
+export async function testNotifications(): Promise<NotificationLogEntry[]> {
+  return handle(await apiFetch("/api/notifications/test", { method: "POST" }));
+}
+
+/** Trigger the daily report immediately, bypassing its scheduled hour. */
+export async function sendDailyReportNow(): Promise<NotificationLogEntry[]> {
+  return handle(await apiFetch("/api/notifications/send-daily-report", { method: "POST" }));
+}
+
+export async function getReportSummary(): Promise<ReportSummary> {
+  return handle(await apiFetch("/api/reports/summary", { cache: "no-store" }));
+}
+
+/** Download a report export as a Blob and trigger a browser save-as, via a throwaway <a> click.
+ * Can't just link straight to the API URL: the export needs the session cookie, which a plain
+ * cross-origin <a href> navigation would send, but any error response (e.g. a 401 if the
+ * session expired) would otherwise render as a broken download instead of a visible error. */
+async function downloadReport(path: string, filename: string): Promise<void> {
+  const res = await apiFetch(path, { cache: "no-store" });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch {
+      // no JSON body
+    }
+    throw new ApiError(detail, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadReportExcel(): Promise<void> {
+  return downloadReport("/api/reports/export.xlsx", "vessel-report.xlsx");
+}
+
+export function downloadReportPdf(): Promise<void> {
+  return downloadReport("/api/reports/export.pdf", "vessel-report.pdf");
 }
 
 export { ApiError };
