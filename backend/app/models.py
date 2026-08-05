@@ -39,10 +39,21 @@ class SourceKind(str, enum.Enum):
 
 class UserRole(str, enum.Enum):
     """Two roles only. There is no path to become ADMIN by self-registering - see
-    app/routers/auth.py and app/cli.py."""
+    app/routers/auth.py and app/cli.py. This holds regardless of *how* someone signs in
+    (password or Microsoft, see AuthProvider) - every brand-new account starts as USER."""
 
     USER = "user"
     ADMIN = "admin"
+
+
+class AuthProvider(str, enum.Enum):
+    """How a user account authenticates. LOCAL accounts have a password; MICROSOFT accounts
+    signed up via "Sign in with Microsoft" and have none (see User.password_hash). A LOCAL
+    account can still *add* Microsoft sign-in later - see routers/auth.py's callback, which
+    links by matching email rather than requiring a fresh account per provider."""
+
+    LOCAL = "local"
+    MICROSOFT = "microsoft"
 
 
 class User(Base):
@@ -53,10 +64,27 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
-    # bcrypt hash - the plaintext password is never stored.
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    # bcrypt hash - the plaintext password is never stored. NULL for Microsoft-only accounts
+    # that have never set a local password (see routers/auth.py's login(), which rejects a
+    # password-login attempt against a NULL hash instead of crashing on it).
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), nullable=False, default=UserRole.USER)
+    auth_provider: Mapped[AuthProvider] = mapped_column(Enum(AuthProvider), nullable=False, default=AuthProvider.LOCAL)
+    # Microsoft's own account id ("oid" from Graph /me), stored once a Microsoft sign-in has
+    # linked to this row - lets us recognise the same Microsoft account on a later login even
+    # if this was originally a LOCAL account (linked by matching email, see routers/auth.py).
+    microsoft_id: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def microsoft_linked(self) -> bool:
+        """Whether this account can currently sign in via Microsoft - true both for accounts
+        that signed *up* via Microsoft and for LOCAL accounts that later linked one (see
+        routers/auth.py's callback). Deliberately separate from `auth_provider`, which only
+        records how the account was *originally* created and never changes after linking - a
+        UserOut field consumers should use to decide "show the Microsoft badge", rather than
+        `auth_provider`, which would stay "local" forever even after linking."""
+        return self.microsoft_id is not None
 
 
 class Vessel(Base):

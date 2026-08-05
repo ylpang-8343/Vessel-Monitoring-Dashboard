@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ApiError, register } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
+import MicrosoftSignInButton from "@/app/components/MicrosoftSignInButton";
 
 // Mirrors validate_password_complexity() in backend/app/schemas.py - kept as a separate literal
 // list (not shared code) so the checklist can render live per-rule feedback as the user types.
@@ -120,6 +121,8 @@ export default function RegisterPage() {
           >
             {submitting ? "Creating account…" : "Register"}
           </button>
+
+          <MicrosoftSignInButton label="Sign up with Microsoft" />
 
           <p className="text-center text-sm text-zinc-500">
             Already have an account?{" "}

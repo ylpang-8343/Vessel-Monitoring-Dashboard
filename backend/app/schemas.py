@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.models import EventType, NotificationChannel, NotificationStatus, UserRole
+from app.models import AuthProvider, EventType, NotificationChannel, NotificationStatus, UserRole
 
 
 def validate_imo(value: str) -> str:
@@ -214,6 +214,13 @@ class UserOut(BaseModel):
     id: int
     email: str
     role: UserRole
+    # How the account was originally created - not necessarily how it can *still* sign in
+    # today, see `microsoft_linked` below (a LOCAL account can link Microsoft sign-in later).
+    auth_provider: AuthProvider
+    # Whether Microsoft sign-in currently works for this account (true for both Microsoft-
+    # native signups and LOCAL accounts that later linked one) - this, not `auth_provider`, is
+    # what the Settings -> Users "Microsoft" badge is based on.
+    microsoft_linked: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -224,6 +231,13 @@ class RoleUpdateRequest(BaseModel):
     last-admin guard applied when handling this."""
 
     role: UserRole
+
+
+class MicrosoftStatusOut(BaseModel):
+    """Response for GET /api/auth/microsoft/status - whether "Sign in with Microsoft" is
+    actually configured on this deployment, so the frontend knows whether to show the button."""
+
+    configured: bool
 
 
 class NotificationSettingsOut(BaseModel):

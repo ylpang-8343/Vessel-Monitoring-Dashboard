@@ -333,6 +333,14 @@ function UserRow({
       <td className="px-6 py-3 font-medium">
         {user.email}
         {isSelf && <span className="ml-2 text-xs font-normal text-zinc-400">(you)</span>}
+        {user.microsoft_linked && (
+          <span
+            className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+            title="Can sign in via Microsoft"
+          >
+            Microsoft
+          </span>
+        )}
       </td>
       <td className="px-6 py-3">
         <span

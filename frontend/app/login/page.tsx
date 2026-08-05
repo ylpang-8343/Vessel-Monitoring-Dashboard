@@ -1,16 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ApiError, login } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
+import MicrosoftSignInButton from "@/app/components/MicrosoftSignInButton";
 
-// One of the two public routes (see AuthProvider's PUBLIC_PATHS). On success, `refresh()`
-// updates the global auth context, which triggers AuthProvider's own redirect away from here
-// (rather than this component navigating directly) - keeps the "where do I go after login"
-// logic in one place.
+// One of the two public routes (see AuthProvider's PUBLIC_PATHS). Wrapped in Suspense because
+// LoginForm below calls useSearchParams(), which this Next.js version requires a Suspense
+// boundary for on a full page load (search params aren't known at build time) - see
+// frontend/AGENTS.md's warning about this version's breaking changes from what you may expect.
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+// On success, `refresh()` updates the global auth context, which triggers AuthProvider's own
+// redirect away from here (rather than this component navigating directly) - keeps the "where
+// do I go after login" logic in one place.
+function LoginForm() {
   const { refresh } = useAuth();
+  const searchParams = useSearchParams();
+  // Set by a failed "Sign in with Microsoft" round trip (backend routers/auth.py's callback
+  // redirects here with ?error=... on any failure) - a full-page redirect, so this can't be
+  // surfaced any other way than reading it back out of the URL on load.
+  const oauthError = searchParams.get("error");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +58,8 @@ export default function LoginPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 bg-white px-6 py-6 dark:bg-zinc-900">
+          {oauthError && <p className="text-sm text-red-600">{oauthError}</p>}
+
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Email</label>
             <input
@@ -71,6 +91,8 @@ export default function LoginPage() {
           >
             {submitting ? "Logging in…" : "Log In"}
           </button>
+
+          <MicrosoftSignInButton label="Sign in with Microsoft" />
 
           <p className="text-center text-sm text-zinc-500">
             Don&apos;t have an account?{" "}

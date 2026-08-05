@@ -17,8 +17,10 @@ Implements Phases 1-4 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
   Active/ETA-to-Destination/Arrived-at-Destination vessel lists and Excel/PDF export; a daily
   report on an admin-configurable schedule, delivered through the same two channels. See "Phase 4:
   notifications and reports" below for what's deliberately out of scope and why.
-- **Auth**: email/password login and registration, gating the whole app. See "First-time setup"
-  below — registering never grants admin, so there's a required bootstrap step.
+- **Auth**: email/password login and registration, plus optional "Sign in with Microsoft", gating
+  the whole app. See "First-time setup" below — registering (by either method) never grants admin,
+  so there's a required bootstrap step. See "Sign in with Microsoft: setup" for enabling the
+  Microsoft option.
 
 Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phase 5): the
 Container/Booking Tracking module.
@@ -84,6 +86,30 @@ promote or demote other users from Settings → Users — the CLI command is onl
 the very first one. The last remaining admin can't be demoted (by themselves or anyone else),
 since that would leave nobody able to manage roles at all.
 
+## Sign in with Microsoft: setup
+
+Off by default - the button doesn't even appear on `/login`/`/register` until it's configured
+(`GET /api/auth/microsoft/status` reports whether it is). To enable it:
+
+1. Register an app at https://portal.azure.com (Entra ID → App registrations → New registration).
+   Add a Redirect URI of type "Web": `http://localhost:8000/api/auth/microsoft/callback` (or your
+   deployed backend's equivalent).
+2. Under "Certificates & secrets", create a client secret.
+3. Set in `backend/.env`:
+   ```
+   MICROSOFT_CLIENT_ID=<application (client) id>
+   MICROSOFT_CLIENT_SECRET=<the client secret value>
+   ```
+   `MICROSOFT_TENANT_ID` defaults to `common` (personal *and* any work/school account can sign
+   in) - set it to a specific tenant id to restrict sign-in to one organisation.
+4. Restart the backend. The button now appears.
+
+However someone signs in - password or Microsoft - registration/first-sign-in always creates a
+`user`-role account, never admin (see "First-time setup" above); if the email matches an existing
+account, Microsoft sign-in links to it instead of creating a duplicate, and Settings → Users shows
+a "Microsoft" badge for any account that can currently sign in that way (regardless of which
+method originally created it).
+
 ## Phase 4: notifications and reports
 
 Settings → Notifications (admin-only) has three independent cards:
@@ -125,11 +151,13 @@ pytest
 ## Notes
 
 - Tables are created automatically on backend startup (`Base.metadata.create_all`) — there's no
-  migration tool wired up yet. This only *adds* new tables, it doesn't alter existing ones, so a
-  schema change (like Phase 2's new `archived_at` column) on a database that already has the old
-  `vessels` table will error on first query. If you hit `UndefinedColumn` after pulling schema
-  changes, reset the local dev volume: `docker compose down -v && docker compose up -d`. Add
-  Alembic before this touches real data you care about preserving across schema changes.
+  migration tool wired up yet. This only *adds* new tables/columns, it doesn't alter existing
+  ones, so a schema change (like Phase 2's new `archived_at` column, or the Microsoft sign-in
+  work's `users.password_hash` becoming nullable) on a database that already has the old shape
+  will error on first query. If you hit `UndefinedColumn`/`NOT NULL constraint` errors after
+  pulling schema changes, reset the local dev volume: `docker compose down -v && docker compose
+  up -d`. Add Alembic before this touches real data you care about preserving across schema
+  changes.
 - The mock tracking worker advances each vessel's simulated voyage by one step every poll tick
   (`TRACKING_POLL_INTERVAL_SECONDS` in `.env`, default 300s/5min to match the dashboard's
   "auto-refreshed every 5 minutes"). Lower it in `.env` for faster manual testing. It only runs

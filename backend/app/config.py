@@ -38,6 +38,27 @@ class Settings(BaseSettings):
     # Whether the session cookie is marked `Secure` (HTTPS-only). Off for local http dev.
     cookie_secure: bool = False
 
+    # "Sign in with Microsoft" (services/microsoft_auth_service.py, routers/auth.py). Unset by
+    # default - the button is hidden/disabled on the frontend until both are configured, the
+    # same "unavailable rather than broken" posture as PDF extraction without an API key.
+    # Register an app at https://portal.azure.com (Entra ID -> App registrations) to get these.
+    microsoft_client_id: str | None = None
+    microsoft_client_secret: str | None = None
+    # "common" accepts both personal Microsoft accounts and any work/school (Entra ID) account;
+    # set to a specific tenant id to restrict sign-in to one organisation.
+    microsoft_tenant_id: str = "common"
+    # Must exactly match a Redirect URI configured on the Azure app registration.
+    microsoft_redirect_uri: str = "http://localhost:8000/api/auth/microsoft/callback"
+    # Overridable so a verification pass can point the OAuth flow at a local fake identity
+    # provider instead of the real login.microsoftonline.com / graph.microsoft.com - lets the
+    # whole authorize -> token -> profile round trip be exercised against real HTTP calls
+    # without needing a live Azure app during testing.
+    microsoft_authority_base_url: str = "https://login.microsoftonline.com"
+    microsoft_graph_base_url: str = "https://graph.microsoft.com"
+    # Where to send the browser after a Microsoft sign-in completes (success or failure) -
+    # the frontend's own origin, not this API's.
+    frontend_base_url: str = "http://localhost:3000"
+
 
 # Single shared instance, imported wherever config is needed (e.g. `from app.config import
 # settings`) instead of constructing `Settings()` repeatedly.

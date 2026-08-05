@@ -15,11 +15,19 @@ export type EventType =
   | "sailed_from_destination";
 
 export type UserRole = "user" | "admin";
+export type AuthProviderKind = "local" | "microsoft";
 
 export interface User {
   id: number;
   email: string;
   role: UserRole;
+  // How the account was originally created - not necessarily how it can still sign in today,
+  // see `microsoft_linked` below.
+  auth_provider: AuthProviderKind;
+  // Whether Microsoft sign-in currently works for this account - true for both Microsoft-
+  // native signups and password accounts that later linked one (see backend routers/auth.py).
+  // The Settings → Users "Microsoft" badge is based on this, not `auth_provider`.
+  microsoft_linked: boolean;
   created_at: string;
 }
 
@@ -182,6 +190,19 @@ export async function logout(): Promise<void> {
  * load. Rejects with a 401 ApiError when nobody is logged in. */
 export async function getCurrentUser(): Promise<User> {
   return handle(await apiFetch("/api/auth/me", { cache: "no-store" }));
+}
+
+/** Whether "Sign in with Microsoft" is actually usable on this deployment - login/register pages
+ * call this on mount to decide whether to show the button at all. */
+export async function getMicrosoftAuthStatus(): Promise<{ configured: boolean }> {
+  return handle(await apiFetch("/api/auth/microsoft/status", { cache: "no-store" }));
+}
+
+/** Not an apiFetch call - the whole point of "Sign in with Microsoft" is a full-page browser
+ * redirect to Microsoft's own login page, which only a real navigation (not `fetch`) can do.
+ * Callers just do `window.location.href = microsoftLoginUrl()`. */
+export function microsoftLoginUrl(): string {
+  return `${API_BASE}/api/auth/microsoft/login`;
 }
 
 export async function listUsers(): Promise<User[]> {
