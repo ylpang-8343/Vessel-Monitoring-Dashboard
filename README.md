@@ -95,7 +95,7 @@ Off by default - the button doesn't even appear on `/login`/`/register` until it
    Add a Redirect URI of type "Web": `http://localhost:8000/api/auth/microsoft/callback` (or your
    deployed backend's equivalent).
 2. Under "Certificates & secrets", create a client secret.
-3. Set in `backend/.env`:
+3. Set in `backend/.env` (placeholders already present in `.env.example`, empty by default):
    ```
    MICROSOFT_CLIENT_ID=<application (client) id>
    MICROSOFT_CLIENT_SECRET=<the client secret value>
