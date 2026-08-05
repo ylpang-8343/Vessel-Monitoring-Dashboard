@@ -191,6 +191,10 @@ cd backend
 pytest
 ```
 
+Want to click through every feature yourself instead of just running the automated suite? See
+[`verification/TESTING_GUIDE.md`](verification/TESTING_GUIDE.md) — a step-by-step manual checklist
+covering auth and all five phases. `verification/REPORT.md` has the results of the last such pass.
+
 ## Notes
 
 - Tables are created automatically on backend startup (`Base.metadata.create_all`) — there's no
