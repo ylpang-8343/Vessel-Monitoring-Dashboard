@@ -1,35 +1,34 @@
-# Verification Report — Phases 1-4 + Auth (password + Microsoft) + Search
+# Verification Report — Phases 1-5 + Auth (password + Microsoft) + Search
 
-Tested against `Vessel_Monitoring_Dashboard_Proposal_Final.pdf`, Sections 3.1-3.9, 6.A-6.E, 7, and
-Section 9 (Phases 1-4), plus the authentication layer (now email/password **and** "Sign in with
-Microsoft") and the three search bars. Screenshots referenced below live in
-`verification/screenshots/`. **Provenance note**: `01`-`23` and `29`-`33` were captured fresh
-during this pass (against a freshly reset database); `24`-`28` (the detailed Notifications/Reports
-walkthrough with real local SMTP/Teams servers) are carried over unchanged from the previous
-Phase 4 pass, since that code wasn't touched by this session's work - `32`/`33` are this pass's
-light re-confirmation that Notifications and Reports still work correctly afterwards.
+Tested against `Vessel_Monitoring_Dashboard_Proposal_Final.pdf`, Sections 3.1-3.9, 4, 6.A-6.E, 7,
+and Section 9 (Phases 1-5), plus the authentication layer (email/password **and** "Sign in with
+Microsoft") and the four search bars (dashboard, containers, sources, users). Screenshots
+referenced below live in `verification/screenshots/`. **Provenance note**: `01`-`23` and `29`-`33`
+were captured during the previous (Microsoft sign-in) pass against a freshly reset database;
+`24`-`28` (the detailed Notifications/Reports walkthrough with real local SMTP/Teams servers) are
+carried over further still from the Phase 4 pass before that, since neither Phase 4's nor the auth
+code was touched by this session's Phase 5 work. `34`-`50` are fresh this pass, covering the new
+Container/Booking Tracking module end-to-end plus a light re-confirmation that Map View, Reports,
+and Settings still render correctly afterwards.
 
-All testing used a clean, freshly-seeded database (`docker compose down -v && docker compose up
--d`) - required this time regardless, since `User.password_hash` becoming nullable and the new
-`auth_provider`/`microsoft_id` columns are schema changes `create_all()` can't apply to an
-existing table (see README's migration note). The tracking poll interval was temporarily lowered
-to 5 seconds (and, briefly, the arrival retention window to 0 days) via environment variables at
-backend startup, as in previous passes. This pass did **not** clear the database at the end - the
-demo data (vessels, `ops.lead@example.com` admin, `test.user@example.com` linked account) is still
-in place.
+This pass reused the existing database rather than resetting it (Booking/BookingEvent are brand
+new tables - purely additive, so `create_all()` picks them up without needing the
+`docker compose down -v` reset the previous auth pass required for its nullable-column change; see
+README's migration note). The tracking/booking poll interval was temporarily lowered to 5 seconds
+via `TRACKING_POLL_INTERVAL_SECONDS` at backend startup, as in previous passes - both the vessel
+tracking worker and the new booking worker share this one setting. This pass did **not** clear the
+database at the end.
 
 ## Result summary
 
-- Backend: **107/107 pytest tests pass** (`cd backend && pytest`) — 11 new tests for Microsoft
-  sign-in (status, login redirect, callback success/failure/CSRF, account linking, local-login
-  guard against a Microsoft-only account).
+- Backend: **130/130 pytest tests pass** (`cd backend && pytest`) — 23 new tests for Phase 5
+  (mock booking adapter lifecycle, "Last Event" text formatting, the bookings CRUD/search/filter/
+  history/archive/remove API, and the booking poll worker's gating/persistence).
 - Frontend: `tsc --noEmit` and `eslint` both clean.
-- **"Sign in with Microsoft" was verified against a real local identity-provider stand-in, not
-  just mocked unit tests** - a genuine OAuth authorize → token exchange → Graph profile-fetch HTTP
-  round trip. See the dedicated section below.
-- **One real bug found and fixed this pass** (Users tab "Microsoft" badge never appeared for an
-  account that linked Microsoft sign-in after registering locally — see below).
-- **No other bugs or conflicts found** against Phases 1-4. See "Conflict checks" at the end.
+- **No bugs found in the new Phase 5 code.** One pre-existing UI inconsistency was caught and
+  fixed while wiring Phase 5 into the shared Settings → Tracking Sources screen — see "Bug found
+  and fixed this pass" below.
+- **No conflicts found against Phases 1-4 or the auth layer.** See "Conflict checks" at the end.
 
 ---
 
@@ -92,7 +91,67 @@ Unchanged this pass - no code in `services/notification_service.py`, `report_ser
 
 ---
 
-## Auth — "Sign in with Microsoft" (new this pass)
+## Phase 5 — Container/Booking Tracking (Section 4, new this pass)
+
+New module at `/containers`, structured the same way as the vessel dashboard per the proposal's
+own wording. Backend: `Booking`/`BookingEvent` models, `BookingSourceAdapter` interface +
+`MockBookingAdapter` (`sources/booking_base.py`/`mock_booking_adapter.py`), `booking_worker.py`
+(its own APScheduler instance, gated on an enabled "Mock Booking Feed" `TrackingSource` row -
+reusing Section 3.9's admin screen rather than a new one), and `routers/bookings.py` (list/search/
+filter/create/history/archive/remove, same access level as vessels - any logged-in user). Frontend:
+`BookingTable`/`BookingStatusDot`/`AddBookingModal` components and `/containers` +
+`/containers/[bookingNumber]` pages, mirroring `VesselTable`/`StatusDot`/`AddVesselModal` and the
+vessel dashboard/history pages respectively.
+
+1. Dashboard's new "Containers" nav link, next to Map View/Reports — `34`.
+2. `/containers` in its empty state — `35`.
+3. Registered two bookings (TCLU7788990 via Maersk Shanghai→Port Klang West, MSKU4455667 via MSC
+   Ningbo→Butterworth); re-registering TCLU7788990 in lower-case was rejected as a duplicate
+   (case-insensitive collision, matching the booking-number normalisation) — `36`.
+4. Table immediately after registration, "Awaiting first tracking update…" for both — `37`; after
+   a few live poll ticks, both show a colour-coded current stage and Current Location sourced from
+   the simulated carrier feed, not vessel position data — `38`.
+5. Free-text search by booking number — `39`; status filter chip ("Loaded") — `40`.
+6. Booking history/timeline page for TCLU7788990, mid-lifecycle — `41`; after enough ticks to
+   reach Gate Out, the full five-stage timeline is shown oldest-to-newest with matching
+   colour-coded dots and correctly-worded "Last Event" text for every stage ("Booking Confirmed
+   Shanghai", "Loaded Shanghai", "Departed Shanghai", "Discharged Port Klang West", "Gate Out Port
+   Klang West") — `42`. Confirmed via direct DB/log inspection that no further events are produced
+   for this booking on subsequent ticks - the lifecycle is genuinely terminal, not a bug.
+7. Manual archive on TCLU7788990 — `43`; Archived tab shows it with history intact, no filter
+   chips shown (mirroring the vessel Archived tab) — `44`. Manual remove on MSKU4455667 — `45`
+   (back to the empty active state, 0 bookings).
+8. Settings → Tracking Sources shows "Mock Booking Feed" (kind=container) as the only *connected*
+   container source, with the five real carrier portals (ONE eCommerce, Maersk, MSC, CMA CGM,
+   InterAsia) catalogued alongside it as "Not yet connected" — the same table, same admin screen,
+   as the vessel sources — `46`.
+
+| Requirement | Result | Evidence |
+|---|---|---|
+| Booking/Container No., Shipping Line, POL/POD, Current Location, Last Event, Source columns | Pass | `38` |
+| Reliably distinguishes Loaded vs. Discharged (Section 3.10's stated gap for AIS data) | Pass | `41`, `42` - status comes directly from the simulated carrier record, no inference |
+| All / Booking Confirmed / Loaded / In Transit / Discharged / Gate Out filter chips | Pass | `40` |
+| Shares search/filter/colour-coding/archive patterns with the vessel dashboard | Pass | `35`-`45` throughout |
+| Duplicate booking number rejected (case-insensitive) | Pass | `36`; `test_rejects_duplicate_booking_number_case_insensitively` |
+| Lifecycle is linear/terminal at Gate Out, not a repeating cycle | Pass | `42`; `test_lifecycle_is_linear_not_repeating_after_gate_out`, `test_booking_lifecycle_stops_producing_events_after_gate_out` |
+| Carrier sources reuse Settings → Tracking Sources (Section 3.9), not a new screen | Pass | `46` |
+| Bookings require login, same as vessels | Pass | `test_bookings_require_login` |
+
+### Bug found and fixed this pass: Tracking Sources "Not yet connected" badge would have mislabelled the Mock Booking Feed
+
+While wiring the new "Mock Booking Feed" source into the existing Settings → Tracking Sources
+table, found that the row component's `isConnected` check was hard-coded to
+`source.adapter_key === "mock"` - true only for the vessel mock source. Left as-is, the actually-
+polled Mock Booking Feed would have shown a "Not yet connected" badge right next to its own
+"Enabled" checkbox, contradicting itself. Caught by code review before it ever reached a
+screenshot (not from a failing test - there wasn't one covering this frontend-only badge logic).
+**Fix**: `isConnected` now checks for either `"mock"` or `"mock_booking"`. Confirmed correct in
+`46` - Mock Booking Feed shows "Enabled" with no "Not yet connected" badge, exactly like Mock
+Tracking Feed.
+
+---
+
+## Auth — "Sign in with Microsoft" (previous pass, unaffected by Phase 5)
 
 Added alongside the existing email/password login, for both new registrations and existing
 accounts (including admins). Backend: `services/microsoft_auth_service.py` (authorize-URL
@@ -184,11 +243,34 @@ fresh-Microsoft-signup case and the linked-local-account case.
   (same JWT shape, same cookie) - confirmed by `18`/`19`/`21`-`23` all working normally for a
   Microsoft-originated login in the same pass.
 - **Phase 1-4 features unaffected**: full walkthrough `01`-`23` re-run fresh against the new
-  schema with zero regressions; `32`/`33` confirm Notifications/Reports specifically.
+  schema with zero regressions in the previous pass; `32`/`33` confirmed Notifications/Reports
+  specifically at that time.
+
+## Conflict checks — Phase 5 against Phases 1-4 / Auth
+
+- **Independent scheduler, independent tables**: `booking_worker.py` runs its own
+  `BackgroundScheduler` instance (like `report_worker.py`'s), separate from
+  `tracking_worker.py`'s - a stuck/slow booking poll can't block vessel polling or vice versa.
+  `Booking`/`BookingEvent` are new tables with no foreign keys into `vessels`/`status_events` -
+  nothing in the vessel domain reads or writes them.
+- **Same access level, same auth dependency**: `bookings.router` is mounted with
+  `Depends(get_current_user)` in `main.py`, identical to `vessels.router` - no separate/weaker
+  gating path introduced. Confirmed via `test_bookings_require_login`.
+- **Shared Settings screen extended, not forked**: the five new container `TrackingSource` seed
+  rows (kind=`container`) and the vessel rows (kind=`vessel`) live in the same table and the same
+  admin UI; `list_tracking_sources`/create/update/delete in `tracking_sources.py` needed zero
+  changes to support this - `kind` was already a generic column.
+- **Reports/Notifications untouched**: neither `report_service.py`/`notification_service.py` nor
+  their routers reference `Booking` at all - a booking event does not appear in `/reports` or
+  trigger a notification, matching the README's explicit scope note for this module.
+- **Phase 1-4 and auth full regression**: light re-confirmation this pass (Map View `47`, Reports
+  `48`, Settings → Notifications `49`, Settings → Users `50`) shows all four rendering correctly
+  with the existing demo data (including the Microsoft-linked account from the previous pass)
+  after the Phase 5 changes to `main.py`/`models.py`/`schemas.py`/`settings/page.tsx`.
 
 ## Known gaps (unchanged, out of scope for this pass)
 
-The Container/Booking module (Phase 5) remains unbuilt. WhatsApp notifications and
-delay-detection alerts/reports remain explicitly deferred (Phase 4's own scope notes). Only
-Microsoft is implemented as a social/SSO sign-in option - no other providers (Google, etc.) were
-requested.
+Phase 6 (Section 9): AI voyage summary, delay detection, predictive ETA, exception alerts, and
+WhatsApp notifications remain explicitly deferred/unbuilt - the proposal itself scopes these as a
+future enhancement. Only Microsoft is implemented as a social/SSO sign-in option - no other
+providers (Google, etc.) were requested.

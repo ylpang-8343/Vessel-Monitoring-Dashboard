@@ -155,6 +155,71 @@ class TrackingSource(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class BookingStatus(str, enum.Enum):
+    """The five stages of a container/booking's lifecycle (Section 4), sourced directly from the
+    carrier's own booking record rather than AIS vessel-position data - unlike Vessel's EventType,
+    there's no "derive from a raw report" ambiguity to resolve (see services/booking_status.py),
+    because the carrier record already states which of these five stages applies. This is exactly
+    what lets this module reliably distinguish loaded vs. discharged where vessel-position data
+    alone cannot (Section 3.10)."""
+
+    BOOKING_CONFIRMED = "booking_confirmed"
+    LOADED = "loaded"
+    IN_TRANSIT = "in_transit"
+    DISCHARGED = "discharged"
+    GATE_OUT = "gate_out"
+
+
+class Booking(Base):
+    """A tracked container/booking (Section 4) - the companion module to Vessel, deliberately
+    "structured the same way as the vessel dashboard" per the proposal's own wording: its own
+    fields plus a derived "current status" from the latest BookingEvent, the same
+    flatten-latest-event approach as Vessel/StatusEvent (see services/presentation.py)."""
+
+    __tablename__ = "bookings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Booking or container number, e.g. "ONEYBOOKG12345" / "TCLU7788990" - stored upper-cased
+    # (see schemas.BookingCreate) so "tclu7788990" and "TCLU7788990" are treated as the same one.
+    booking_number: Mapped[str] = mapped_column(String(30), unique=True, index=True, nullable=False)
+    shipping_line: Mapped[str] = mapped_column(String(80), nullable=False)
+    port_of_loading: Mapped[str] = mapped_column(String(120), nullable=False)
+    port_of_discharge: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Manual archive only (Section 3.8's pattern, mirrored here) - unlike Vessel there is no
+    # auto-archive retention sweep for bookings: the proposal doesn't specify one for this module
+    # (Section 3.7 is explicitly about the vessel dashboard), and "Gate Out" is already a clear,
+    # final signal worth leaving visible rather than time-boxing away on a guessed retention period.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Same ordering/cascade contract as Vessel.events - see that model's comment.
+    events: Mapped[list["BookingEvent"]] = relationship(
+        back_populates="booking", cascade="all, delete-orphan", order_by="BookingEvent.occurred_at"
+    )
+
+
+class BookingEvent(Base):
+    """One tracked update for a booking (Section 4) - e.g. "Loaded Shanghai". Append-only, the
+    same contract as StatusEvent."""
+
+    __tablename__ = "booking_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id"), nullable=False, index=True)
+    status: Mapped[BookingStatus] = mapped_column(Enum(BookingStatus), nullable=False)
+    # Where the cargo is right now per this report - a port name for most stages, or an "at sea"
+    # description while IN_TRANSIT (see sources/mock_booking_adapter.py).
+    current_location: Mapped[str] = mapped_column(String(160), nullable=False)
+    # Human-readable "Last Event" text (Section 4), e.g. "Discharged Butterworth — 25 Jul 2026,
+    # 07:55" - built by services/booking_status.py, the same pattern as StatusEvent.last_event_text.
+    last_event_text: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    booking: Mapped["Booking"] = relationship(back_populates="events")
+
+
 class NotificationChannel(str, enum.Enum):
     """The two channels Section 6.C calls out as available "at launch" - WhatsApp is explicitly
     scoped as a future enhancement in the proposal, so it isn't modelled here at all."""

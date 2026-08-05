@@ -16,9 +16,9 @@ def _clean_db():
 
 @pytest.fixture(autouse=True)
 def _seed_mock_source(_clean_db):
-    # run_tracking_poll() only polls when an enabled "mock" TrackingSource exists (Section
-    # 3.9 gating) - seed one by default so existing tracking-worker tests keep working;
-    # tests that specifically exercise the disabled case delete/disable it themselves.
+    # run_tracking_poll()/run_booking_poll() only poll when a matching enabled TrackingSource
+    # exists (Section 3.9 gating) - seed both by default so existing worker tests keep working;
+    # tests that specifically exercise the disabled case delete/disable them itself.
     from app.models import SourceKind, TrackingSource
 
     db = SessionLocal()
@@ -32,6 +32,15 @@ def _seed_mock_source(_clean_db):
                 enabled=True,
             )
         )
+        db.add(
+            TrackingSource(
+                name="Mock Booking Feed",
+                url="internal://mock-booking",
+                kind=SourceKind.CONTAINER,
+                adapter_key="mock_booking",
+                enabled=True,
+            )
+        )
         db.commit()
     finally:
         db.close()
@@ -39,11 +48,13 @@ def _seed_mock_source(_clean_db):
 
 @pytest.fixture(autouse=True)
 def _no_background_scheduler(monkeypatch):
-    # Keep API tests deterministic: the real tracking worker and the daily-report checker both
-    # run on background threads (against a live poll interval / wall-clock hour respectively),
-    # neither of which is relevant to these tests.
+    # Keep API tests deterministic: the three background workers (vessel tracking, booking
+    # polling, and the daily-report checker) all run on background threads (against a live poll
+    # interval / wall-clock hour respectively), none of which is relevant to these tests.
     monkeypatch.setattr("app.main.start_scheduler", lambda: None)
     monkeypatch.setattr("app.main.stop_scheduler", lambda: None)
+    monkeypatch.setattr("app.main.booking_worker.start_scheduler", lambda: None)
+    monkeypatch.setattr("app.main.booking_worker.stop_scheduler", lambda: None)
     monkeypatch.setattr("app.main.report_worker.start_scheduler", lambda: None)
     monkeypatch.setattr("app.main.report_worker.stop_scheduler", lambda: None)
 

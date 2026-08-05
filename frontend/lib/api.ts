@@ -48,6 +48,43 @@ export interface Vessel {
   source_name: string | null;
 }
 
+// Mirrors backend/app/models.py's BookingStatus enum exactly (Section 4) - kept in sync by hand,
+// the same as EventType above.
+export type BookingStatus = "booking_confirmed" | "loaded" | "in_transit" | "discharged" | "gate_out";
+
+// Matches backend BookingOut (Section 4) - a booking/container's own fields plus its latest
+// event flattened in, mirroring Vessel above.
+export interface Booking {
+  id: number;
+  booking_number: string;
+  shipping_line: string;
+  port_of_loading: string;
+  port_of_discharge: string;
+  created_at: string;
+  archived_at: string | null;
+  current_location: string | null;
+  last_event_status: BookingStatus | null;
+  last_event_text: string | null;
+  last_event_at: string | null;
+  source_name: string | null;
+}
+
+// One row of a booking's movement timeline (Section 4), mirroring StatusEvent.
+export interface BookingEvent {
+  id: number;
+  status: BookingStatus;
+  current_location: string;
+  last_event_text: string;
+  source_name: string;
+  occurred_at: string;
+  recorded_at: string;
+}
+
+export interface BookingHistory {
+  booking: Booking;
+  timeline: BookingEvent[];
+}
+
 export interface TrackingSource {
   id: number;
   name: string;
@@ -261,6 +298,41 @@ export async function importBulkRows(
   rows: { name: string; imo_number: string; destination_port?: string | null }[],
 ): Promise<BulkImportResult> {
   return handle(await apiFetch("/api/vessels/bulk/import", { method: "POST", body: JSON.stringify({ rows }) }));
+}
+
+/** List bookings/containers for the Container/Booking table (Section 4) - same shape as
+ * listVessels(). */
+export async function listBookings(opts?: {
+  query?: string;
+  archived?: boolean;
+  status?: BookingStatus;
+}): Promise<Booking[]> {
+  const url = new URL(`${API_BASE}/api/bookings`);
+  if (opts?.query) url.searchParams.set("q", opts.query);
+  if (opts?.archived) url.searchParams.set("archived", "true");
+  if (opts?.status) url.searchParams.set("status", opts.status);
+  return handle(await apiFetch(url.pathname + url.search, { cache: "no-store" }));
+}
+
+export async function createBooking(input: {
+  booking_number: string;
+  shipping_line: string;
+  port_of_loading: string;
+  port_of_discharge: string;
+}): Promise<Booking> {
+  return handle(await apiFetch("/api/bookings", { method: "POST", body: JSON.stringify(input) }));
+}
+
+export async function getBookingHistory(bookingNumber: string): Promise<BookingHistory> {
+  return handle(await apiFetch(`/api/bookings/${bookingNumber}/history`, { cache: "no-store" }));
+}
+
+export async function archiveBooking(bookingNumber: string): Promise<Booking> {
+  return handle(await apiFetch(`/api/bookings/${bookingNumber}/archive`, { method: "POST" }));
+}
+
+export async function removeBooking(bookingNumber: string): Promise<void> {
+  return handle(await apiFetch(`/api/bookings/${bookingNumber}`, { method: "DELETE" }));
 }
 
 export async function listTrackingSources(): Promise<TrackingSource[]> {

@@ -1,6 +1,6 @@
-# Vessel Monitoring Dashboard — Phases 1-4
+# Vessel Monitoring Dashboard — Phases 1-5
 
-Implements Phases 1-4 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
+Implements Phases 1-5 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
 
 - **Phase 1**: vessel registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review),
   automated tracking via a pluggable source adapter (mock adapter for now — see below), dashboard
@@ -17,13 +17,20 @@ Implements Phases 1-4 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
   Active/ETA-to-Destination/Arrived-at-Destination vessel lists and Excel/PDF export; a daily
   report on an admin-configurable schedule, delivered through the same two channels. See "Phase 4:
   notifications and reports" below for what's deliberately out of scope and why.
+- **Phase 5**: the Container/Booking Tracking module (Section 4) at `/containers` — its own
+  Booking Confirmed → Loaded → In Transit → Discharged → Gate Out lifecycle, sourced from a
+  simulated carrier-portal feed (see below) rather than vessel-position data, which is what lets
+  it reliably distinguish loaded vs. discharged (Section 3.10). Structured the same way as the
+  vessel dashboard on purpose — same search/filter/colour-coding/archive patterns, and the same
+  Settings → Tracking Sources screen manages both vessel and carrier sources. See "Phase 5:
+  Container/Booking Tracking" below for what's deliberately out of scope and why.
 - **Auth**: email/password login and registration, plus optional "Sign in with Microsoft", gating
   the whole app. See "First-time setup" below — registering (by either method) never grants admin,
   so there's a required bootstrap step. See "Sign in with Microsoft: setup" for enabling the
   Microsoft option.
 
-Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phase 5): the
-Container/Booking Tracking module.
+Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phase 6): AI voyage
+summaries, delay detection, predictive ETA, exception alerts, and WhatsApp notifications.
 
 ## Why tracking data is simulated
 
@@ -34,6 +41,11 @@ tracking worker (`backend/app/services/tracking_worker.py`) is built against a
 (`backend/app/sources/mock_adapter.py`) wired in for now, so the full pipeline — poll → status
 engine → history → dashboard — works end-to-end. Swap in a real scraper/API client later by
 implementing the same interface; nothing else needs to change.
+
+The same is true of the Container/Booking module's five carrier portals (Section 8.1: ONE, Maersk,
+MSC, CMA CGM, InterAsia) — no credentials available, so `backend/app/services/booking_worker.py`
+polls a `BookingSourceAdapter` interface (`backend/app/sources/booking_base.py`) with a
+`MockBookingAdapter` (`backend/app/sources/mock_booking_adapter.py`) wired in the same way.
 
 ## Prerequisites
 
@@ -140,6 +152,37 @@ see `backend/app/services/notification_service.py`'s and `report_service.py`'s m
 Reports (`/reports`, reachable by any logged-in user, not just admins) covers Active Vessels, ETA
 to Destination, and Arrived at Destination, each exportable to Excel or PDF from the same page.
 
+## Phase 5: Container/Booking Tracking
+
+`/containers` (Section 4), reachable by any logged-in user like the vessel dashboard. Register a
+booking/container with its number, shipping line, and Port of Loading/Discharge; a simulated
+carrier feed (see "Why tracking data is simulated" above) then advances it through five stages,
+one per poll tick: **Booking Confirmed → Loaded → In Transit → Discharged → Gate Out**. Unlike the
+vessel mock adapter's repeating voyage, this lifecycle is linear and one-way — a real booking
+doesn't sail again after Gate Out, so once a booking reaches it, polling stops producing events
+for it (see `backend/app/sources/mock_booking_adapter.py`'s module docstring).
+
+Deliberately "structured the same way as the vessel dashboard" (the proposal's own words for this
+module):
+
+- Same Active/Archived tabs, free-text search (booking number/shipping line/POL/POD), and status
+  filter chips as the vessel dashboard, plus the same colour-coded "Last Event" convention (a
+  different five-colour palette so a screenshot never reads as the vessel table at a glance — see
+  `frontend/app/components/BookingStatusDot.tsx`).
+- Same manual archive/remove actions as Section 3.8, on each booking's history page. Unlike
+  vessels, there's no *auto*-archive sweep here — the proposal doesn't specify a retention window
+  for this module, and "Gate Out" is already a clear, final signal worth leaving visible.
+- The five real carrier portals (Section 8.1: ONE, Maersk, MSC, CMA CGM, InterAsia) are catalogued
+  in the **same** Settings → Tracking Sources screen as the vessel sources (marked "Not yet
+  connected", same reasoning as MarineTraffic/VesselFinder/Polestar GMDA) rather than a second
+  admin screen — the Mock Booking Feed's enable/disable toggle there pauses/resumes this module's
+  simulated updates, exactly like the Mock Tracking Feed does for vessels.
+
+**Deliberately not implemented**: bulk upload (Section 3.2's Excel/CSV/PDF import is specific to
+vessel registration; Section 4 doesn't call for an equivalent here) and notifications/reports
+(Section 6.C/7 are scoped to the vessel dashboard) — a booking event doesn't trigger an email/Teams
+alert or appear in `/reports`.
+
 ## Tests
 
 ```bash
@@ -161,7 +204,9 @@ pytest
 - The mock tracking worker advances each vessel's simulated voyage by one step every poll tick
   (`TRACKING_POLL_INTERVAL_SECONDS` in `.env`, default 300s/5min to match the dashboard's
   "auto-refreshed every 5 minutes"). Lower it in `.env` for faster manual testing. It only runs
-  while the "Mock Tracking Feed" source is enabled in Settings (`/settings`).
+  while the "Mock Tracking Feed" source is enabled in Settings (`/settings`). The Phase 5 booking
+  worker shares this same interval and enable/disable pattern (via "Mock Booking Feed") - see
+  "Phase 5: Container/Booking Tracking" above.
 - Vessels whose latest event is "Arrived at Destination" auto-archive after
   `ARRIVED_RETENTION_DAYS` (`.env`, default 10) — checked on every tracking-poll tick. Archiving
   (auto or manual) is one-way for now: archived vessels move to the dashboard's Archived tab with

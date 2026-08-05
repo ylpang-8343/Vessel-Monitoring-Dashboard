@@ -10,7 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.models import AuthProvider, EventType, NotificationChannel, NotificationStatus, UserRole
+from app.models import AuthProvider, BookingStatus, EventType, NotificationChannel, NotificationStatus, UserRole
 
 
 def validate_imo(value: str) -> str:
@@ -125,6 +125,71 @@ class BulkImportResult(BaseModel):
 
     imported: list[VesselOut]
     skipped: list[BulkUploadRow]
+
+
+class BookingCreate(BaseModel):
+    """Payload for registering a booking/container for tracking (Section 4) - the companion of
+    VesselCreate. All four fields are required, unlike a vessel's optional destination_port:
+    a booking's whole purpose is tracking its journey between two known ports, so POL/POD aren't
+    optional the way a vessel's free-standing destination is (Section 3.1)."""
+
+    booking_number: str = Field(min_length=1, max_length=30)
+    shipping_line: str = Field(min_length=1, max_length=80)
+    port_of_loading: str = Field(min_length=1, max_length=120)
+    port_of_discharge: str = Field(min_length=1, max_length=120)
+
+    @field_validator("booking_number")
+    @classmethod
+    def normalize_booking_number(cls, v: str) -> str:
+        # Upper-cased and trimmed so e.g. "tclu7788990" and "TCLU7788990" collide as the same
+        # booking on the uniqueness check (routers/bookings.py), matching how container/booking
+        # numbers are conventionally written (Section 4's own examples are all upper-case).
+        v = v.strip().upper()
+        if not v:
+            raise ValueError("Booking/container number is required")
+        return v
+
+
+class BookingEventOut(BaseModel):
+    """One row of a booking's movement timeline (Section 4), mirroring StatusEventOut."""
+
+    id: int
+    status: BookingStatus
+    current_location: str
+    last_event_text: str
+    source_name: str
+    occurred_at: datetime
+    recorded_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BookingOut(BaseModel):
+    """A booking/container as shown on the Container/Booking table (Section 4) - its own fields
+    plus a flattened view of its *latest* event, mirroring VesselOut. Built by
+    services/presentation.py's `to_booking_out()`."""
+
+    id: int
+    booking_number: str
+    shipping_line: str
+    port_of_loading: str
+    port_of_discharge: str
+    created_at: datetime
+    archived_at: datetime | None = None
+    current_location: str | None = None
+    last_event_status: BookingStatus | None = None
+    last_event_text: str | None = None
+    last_event_at: datetime | None = None
+    source_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class BookingHistoryOut(BaseModel):
+    """Response for GET /api/bookings/{booking_number}/history - mirrors VesselHistoryOut."""
+
+    booking: BookingOut
+    timeline: list[BookingEventOut]
 
 
 class TrackingSourceOut(BaseModel):

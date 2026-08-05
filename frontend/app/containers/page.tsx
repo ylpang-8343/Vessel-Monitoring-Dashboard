@@ -2,44 +2,45 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import AddVesselModal from "./components/AddVesselModal";
-import VesselTable from "./components/VesselTable";
-import UserMenu from "./components/UserMenu";
-import { useAuth } from "./components/AuthProvider";
-import { statusMeta } from "./components/StatusDot";
-import { ApiError, EventType, listVessels, Vessel } from "@/lib/api";
+import AddBookingModal from "@/app/components/AddBookingModal";
+import BookingTable from "@/app/components/BookingTable";
+import UserMenu from "@/app/components/UserMenu";
+import { useAuth } from "@/app/components/AuthProvider";
+import { bookingStatusMeta } from "@/app/components/BookingStatusDot";
+import { ApiError, Booking, BookingStatus, listBookings } from "@/lib/api";
 
-// Matches Figure 2's "Auto-refreshed every 5 minutes" caption.
-const DASHBOARD_REFRESH_MS = 5 * 60 * 1000;
+// Same auto-refresh cadence as the vessel dashboard (Section 3.4's "Auto-refreshed every 5
+// minutes" convention, applied consistently across both modules).
+const CONTAINERS_REFRESH_MS = 5 * 60 * 1000;
 
 type View = "active" | "archived";
 
-// Section 6.D filter chips - the neutral, verifiable statuses from Section 3.10, not a
-// fixed "Pasir Gudang" filter. "Sailed from Destination" is deliberately left out: it isn't
-// one of the four chips the proposal calls out.
-const STATUS_FILTERS: { value: EventType; label: string }[] = [
-  { value: "sailing", label: "At Sea" },
-  { value: "at_port", label: "At Port" },
-  { value: "eta_destination", label: "ETA to Destination" },
-  { value: "arrived_destination", label: "Arrived at Destination" },
+// All five BookingStatus values are shown as filter chips here (unlike the vessel dashboard,
+// which deliberately leaves "Sailed from Destination" off its four Section 6.D chips) - Section
+// 4's own mockup (Figure 3a) shows all five stages as chips: All / Booking Confirmed / Loaded /
+// In Transit / Discharged / Gate Out.
+const STATUS_FILTERS: { value: BookingStatus; label: string }[] = [
+  { value: "booking_confirmed", label: "Booking Confirmed" },
+  { value: "loaded", label: "Loaded" },
+  { value: "in_transit", label: "In Transit" },
+  { value: "discharged", label: "Discharged" },
+  { value: "gate_out", label: "Gate Out" },
 ];
 
-// Main dashboard (Section 3.4) - the app's home page ("/"). Combines the Active/Archived tabs
-// (Section 3.7/3.8), free-text search (6.A), status filter chips (6.D), and the vessel table
-// into one view, all driven by a single `refresh()` call whenever any of their state changes.
-export default function DashboardPage() {
+// Container/Booking Tracking module (Section 4) at "/containers" - structured the same way as
+// the main vessel dashboard per the proposal's own wording: Active/Archived tabs, free-text
+// search, status filter chips, and the booking table, all driven by one refresh() call.
+export default function ContainersPage() {
   const { user } = useAuth();
   const [view, setView] = useState<View>("active");
-  const [vessels, setVessels] = useState<Vessel[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<EventType | null>(null);
+  const [statusFilter, setStatusFilter] = useState<BookingStatus | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Debounce the raw input into a separate value so `refresh` (and the effect below) only
-  // change identity 250ms after typing stops, instead of on every keystroke.
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(handle);
@@ -47,14 +48,12 @@ export default function DashboardPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listVessels({
+      const data = await listBookings({
         archived: view === "archived",
         query: debouncedSearch || undefined,
-        // The status chips only apply to the Active view - Archived has its own separate
-        // concept of "what happened to this vessel" that doesn't fit the same four chips.
         status: view === "active" && statusFilter ? statusFilter : undefined,
       });
-      setVessels(data);
+      setBookings(data);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the API — is the backend running?");
@@ -63,16 +62,12 @@ export default function DashboardPage() {
     }
   }, [view, debouncedSearch, statusFilter]);
 
-  // Single effect drives both the initial load and the periodic auto-refresh, and re-fires
-  // whenever `refresh` itself changes identity (i.e. whenever view/search/statusFilter change) -
-  // this refetches once for the state change and correctly resets the interval timer, rather
-  // than needing two separate effects that could disagree about which state is current.
   useEffect(() => {
     void (async () => {
       setLoading(true);
       await refresh();
     })();
-    const interval = setInterval(() => refresh(), DASHBOARD_REFRESH_MS);
+    const interval = setInterval(() => refresh(), CONTAINERS_REFRESH_MS);
     return () => clearInterval(interval);
   }, [refresh]);
 
@@ -81,28 +76,13 @@ export default function DashboardPage() {
       <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
         <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
           <div>
-            <h1 className="text-lg font-semibold text-white">Vessel Monitoring Dashboard</h1>
-            <p className="text-xs text-white/70">Multi-Port Operations · Live View</p>
+            <h1 className="text-lg font-semibold text-white">Container / Booking Tracking</h1>
+            <p className="text-xs text-white/70">Companion Module · Cargo movement status</p>
           </div>
           <div className="flex items-center gap-3">
             <UserMenu />
-            <Link
-              href="/map"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Map View
-            </Link>
-            <Link
-              href="/containers"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Containers
-            </Link>
-            <Link
-              href="/reports"
-              className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Reports
+            <Link href="/" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20">
+              Vessel Dashboard
             </Link>
             {user?.role === "admin" && (
               <Link
@@ -135,7 +115,7 @@ export default function DashboardPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search vessel, IMO, port…"
+            placeholder="Search container / booking no…"
             className="mb-2 w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           />
         </div>
@@ -147,7 +127,7 @@ export default function DashboardPage() {
             </FilterChip>
             {STATUS_FILTERS.map(({ value, label }) => (
               <FilterChip key={value} active={statusFilter === value} onClick={() => setStatusFilter(value)}>
-                <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${statusMeta(value).dot}`} />
+                <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${bookingStatusMeta(value).dot}`} />
                 {label}
               </FilterChip>
             ))}
@@ -160,36 +140,34 @@ export default function DashboardPage() {
 
         <div className="bg-white dark:bg-zinc-900">
           {loading ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading vessels…</div>
+            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading bookings…</div>
           ) : (
-            <VesselTable vessels={vessels} />
+            <BookingTable bookings={bookings} />
           )}
         </div>
 
         <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-6 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
           {view === "active" ? (
             <span>
-              Showing {vessels.length} monitored vessel{vessels.length === 1 ? "" : "s"} · Auto-refreshed every 5
-              minutes · Destination is optional, set per-vessel at registration
+              Showing {bookings.length} tracked booking{bookings.length === 1 ? "" : "s"}/container
+              {bookings.length === 1 ? "" : "s"} · Current Location and Last Event sourced from carrier booking
+              records, not vessel position data
             </span>
           ) : (
             <span>
-              Showing {vessels.length} archived vessel{vessels.length === 1 ? "" : "s"} · History stays available
-              for reference · Archiving is one-way — re-register a vessel to resume tracking
+              Showing {bookings.length} archived booking{bookings.length === 1 ? "" : "s"} · History stays
+              available for reference
             </span>
           )}
-          <span>Click any vessel row to open its full movement history and timeline</span>
+          <span>Click any row to open its full movement history and timeline</span>
         </div>
       </div>
 
-      {showAddModal && (
-        <AddVesselModal onClose={() => setShowAddModal(false)} onImported={refresh} />
-      )}
+      {showAddModal && <AddBookingModal onClose={() => setShowAddModal(false)} onImported={refresh} />}
     </div>
   );
 }
 
-// Active/Archived tab button.
 function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -205,7 +183,6 @@ function ViewTab({ active, onClick, children }: { active: boolean; onClick: () =
   );
 }
 
-// One status filter pill (Section 6.D), including the "All" pill that clears the filter.
 function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button

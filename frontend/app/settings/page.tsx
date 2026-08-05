@@ -130,10 +130,11 @@ function TrackingSourcesTab() {
   return (
     <>
       <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-        Only the Mock Tracking Feed is actually polled right now — MarineTraffic, VesselFinder, and Polestar
-        GMDA have no free public API and no credentials are configured yet, so they&apos;re catalogued here but
-        marked &quot;Not yet connected&quot;. Toggling the Mock Tracking Feed on/off pauses or resumes the
-        simulated updates driving the dashboard.
+        Only the Mock Tracking Feed (vessels) and Mock Booking Feed (containers, Section 4) are actually polled
+        right now — MarineTraffic, VesselFinder, Polestar GMDA, and the five carrier booking portals (ONE,
+        Maersk, MSC, CMA CGM, InterAsia) have no free public API and no credentials are configured yet, so
+        they&apos;re catalogued here but marked &quot;Not yet connected&quot;. Toggling either mock source on/off
+        pauses or resumes its simulated updates.
       </div>
 
       <div className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
@@ -381,9 +382,10 @@ function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: (
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
 
-  // Only the seeded mock source is ever actually polled - every other source (including any
-  // new one an admin adds here) is catalogued but inert, hence the "Not yet connected" badge.
-  const isConnected = source.adapter_key === "mock";
+  // Only the two seeded mock sources (vessel + booking, Section 4) are ever actually polled -
+  // every other source (including any new one an admin adds here) is catalogued but inert,
+  // hence the "Not yet connected" badge.
+  const isConnected = source.adapter_key === "mock" || source.adapter_key === "mock_booking";
 
   /** Toggling this is what actually pauses/resumes the tracking worker for the mock source -
    * see backend services/tracking_worker.py's `mock_source_enabled` check. */
