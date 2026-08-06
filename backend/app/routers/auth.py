@@ -3,6 +3,7 @@ other router in the app, these must stay reachable *without* being logged in alr
 app/main.py, where this router is the one NOT wrapped in `Depends(get_current_user)`)."""
 
 import secrets
+from typing import Literal
 from urllib.parse import quote
 
 import httpx
@@ -25,20 +26,43 @@ COOKIE_MAX_AGE_SECONDS = settings.jwt_expire_days * 24 * 60 * 60
 OAUTH_STATE_COOKIE_NAME = "ms_oauth_state"
 OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 
+# Cookie attributes shared by *every* set/delete of the session cookie below.
+#
+# These must stay identical across setting and clearing it: a browser only removes a cookie when
+# the clearing `Set-Cookie` repeats the same attributes it was stored with, and - more sharply -
+# a cross-site response carrying `SameSite=Lax` is rejected outright rather than applied. When
+# the frontend and backend are served from different domains (any real deployment; not local dev,
+# where :3000 -> :8000 is same-site), logging out is exactly such a cross-site request. Clearing
+# the cookie with anything less than these attributes means the browser silently ignores the
+# deletion, the session survives, and the user stays logged in after pressing "Log out" - see
+# tests/test_auth.py::test_logout_clears_the_cookie_with_the_same_attributes_it_was_set_with.
+#
+# `samesite="none"` (which browsers only honour together with `Secure`) is what allows the cookie
+# to be sent cross-domain at all; combined with the explicit CORS origin list in app/main.py,
+# that's what makes a split frontend/backend deployment work. Set COOKIE_SECURE=true in the
+# backend's environment for any HTTPS deployment (see .env.example).
+SESSION_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "none"
+SESSION_COOKIE_PATH = "/"
+
+# The CSRF state cookie needs `SameSite=Lax`, not `none`: it only has to survive the top-level
+# GET navigation Microsoft redirects the browser back with (which Lax explicitly permits), and
+# Lax keeps it from riding along on unrelated cross-site requests. Same matching rule as above
+# applies to clearing it, hence a named constant rather than repeating the literal.
+OAUTH_STATE_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
+
 
 def _set_session_cookie(response: Response, user_id: int) -> None:
     """Issue a fresh session token and attach it as an httpOnly cookie (so frontend JS can't
-    read it, only send it automatically) on the given response. `samesite="lax"` plus an
-    explicit CORS origin (see app/main.py) is what makes this work across the :3000/:8000 port
-    split in local dev without needing a third-party-cookie exception."""
+    read it, only send it automatically) on the given response."""
     token = create_access_token(user_id)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         max_age=COOKIE_MAX_AGE_SECONDS,
+        path=SESSION_COOKIE_PATH,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="none",
+        samesite=SESSION_COOKIE_SAMESITE,
     )
 
 
@@ -80,8 +104,18 @@ def login(payload: UserLogin, response: Response, db: Session = Depends(get_db))
 @router.post("/logout", status_code=204)
 def logout(response: Response):
     """Clear the session cookie. Stateless on the server side - the JWT itself isn't tracked or
-    revoked anywhere, it just stops being sent by the browser after this."""
-    response.delete_cookie(key=SESSION_COOKIE_NAME)
+    revoked anywhere, it just stops being sent by the browser after this.
+
+    Every attribute here has to mirror `_set_session_cookie()` exactly, or the browser won't
+    apply the deletion at all on a cross-domain deployment - see SESSION_COOKIE_SAMESITE above
+    for why."""
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        path=SESSION_COOKIE_PATH,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=SESSION_COOKIE_SAMESITE,
+    )
     return None
 
 
@@ -115,9 +149,10 @@ def microsoft_login():
         key=OAUTH_STATE_COOKIE_NAME,
         value=state,
         max_age=OAUTH_STATE_MAX_AGE_SECONDS,
+        path=SESSION_COOKIE_PATH,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite=OAUTH_STATE_COOKIE_SAMESITE,
     )
     return response
 
@@ -136,9 +171,20 @@ def microsoft_callback(
     frontend (to `/` on success, to `/login?error=...` on any failure) since this endpoint is
     itself only ever reached via a full-page browser navigation, never called from JS."""
 
+    def _clear_state_cookie(resp: Response) -> None:
+        """Drop the one-shot CSRF cookie once this callback has run, whatever the outcome -
+        attributes mirrored from where it's set, for the same reason logout() mirrors its own."""
+        resp.delete_cookie(
+            key=OAUTH_STATE_COOKIE_NAME,
+            path=SESSION_COOKIE_PATH,
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite=OAUTH_STATE_COOKIE_SAMESITE,
+        )
+
     def fail(message: str) -> RedirectResponse:
         resp = RedirectResponse(f"{settings.frontend_base_url}/login?error={quote(message)}", status_code=307)
-        resp.delete_cookie(key=OAUTH_STATE_COOKIE_NAME)
+        _clear_state_cookie(resp)
         return resp
 
     if error:
@@ -182,5 +228,5 @@ def microsoft_callback(
 
     resp = RedirectResponse(settings.frontend_base_url, status_code=307)
     _set_session_cookie(resp, user.id)
-    resp.delete_cookie(key=OAUTH_STATE_COOKIE_NAME)
+    _clear_state_cookie(resp)
     return resp

@@ -158,6 +158,12 @@ that's a bug — check the relevant file mentioned so you know where to start lo
 
 - [ ] Log out entirely and try navigating directly to `/`, `/containers`, `/reports`, `/map`, and
       `/settings` by URL → every one redirects to `/login` (no page renders data while logged out).
+      **Re-run this one on the deployed site too, not just locally.** Logging out depends on the
+      browser accepting the backend's cookie-clearing response, and the rules for that are
+      stricter when the frontend and backend sit on different domains than when they're both on
+      `localhost` — a logout that works locally can silently do nothing in production, leaving
+      you signed in. (This exact bug happened once; see `backend/app/routers/auth.py`'s
+      `SESSION_COOKIE_SAMESITE` comment and the regression test named there.)
 - [ ] Resize the browser window / check on a smaller viewport — tables scroll horizontally rather
       than breaking the page layout.
 - [ ] Open the browser console while clicking through the whole app → no red errors during normal

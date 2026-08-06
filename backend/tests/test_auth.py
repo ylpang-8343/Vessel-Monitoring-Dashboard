@@ -95,6 +95,55 @@ def test_logout_clears_session():
     assert fresh_client.get("/api/auth/me").status_code == 401
 
 
+def _cookie_attributes(set_cookie_header: str) -> dict[str, str]:
+    """Parse a raw `Set-Cookie` value into a lower-cased {attribute: value} map, with valueless
+    flags (HttpOnly/Secure) mapped to "". Only the attributes matter here, not the token itself."""
+    attrs: dict[str, str] = {}
+    for part in set_cookie_header.split(";")[1:]:  # [0] is the cookie name=value pair itself
+        name, _, value = part.strip().partition("=")
+        attrs[name.lower()] = value
+    return attrs
+
+
+def test_logout_clears_the_cookie_with_the_same_attributes_it_was_set_with(monkeypatch):
+    """Regression test for a bug that only ever showed up on a real deployment: logout()'s
+    `delete_cookie` used Starlette's defaults (SameSite=Lax, no Secure, no HttpOnly) instead of
+    repeating the attributes the cookie was *set* with (SameSite=None, Secure, HttpOnly).
+
+    A browser only removes a cookie when the clearing Set-Cookie matches, and it rejects a
+    cross-site response carrying SameSite=Lax outright - so on a deployment with the frontend
+    and backend on different domains, pressing "Log out" left the session cookie in place and
+    the user stayed signed in (visiting e.g. /map by URL went straight in). It passed locally
+    and in `test_logout_clears_session` above because :3000 -> :8000 is same-site and because
+    httpx's cookie jar isn't a browser - it honours the deletion either way. Hence this test
+    asserts on the raw header instead of on observable client behaviour.
+    """
+    # A real HTTPS deployment sets this; with it False, `secure` is legitimately absent from
+    # both headers and the mismatch this guards against wouldn't be visible.
+    monkeypatch.setattr("app.config.settings.cookie_secure", True)
+
+    _register(email="cookie.attrs@example.com", password="Passw0rd!")
+    fresh_client = TestClient(app)
+    login_resp = fresh_client.post(
+        "/api/auth/login", json={"email": "cookie.attrs@example.com", "password": "Passw0rd!"}
+    )
+    logout_resp = fresh_client.post("/api/auth/logout")
+
+    set_attrs = _cookie_attributes(login_resp.headers["set-cookie"])
+    clear_attrs = _cookie_attributes(logout_resp.headers["set-cookie"])
+
+    for attribute in ("samesite", "path", "secure", "httponly"):
+        assert attribute in set_attrs, f"login response should set {attribute}"
+        assert clear_attrs.get(attribute) == set_attrs.get(attribute), (
+            f"logout's Set-Cookie must repeat {attribute!r} exactly as login set it, or browsers "
+            f"will ignore the deletion cross-site (set={set_attrs.get(attribute)!r}, "
+            f"clear={clear_attrs.get(attribute)!r})"
+        )
+
+    # And the deletion must actually be an expiry, not just a matching-attributes no-op.
+    assert clear_attrs.get("max-age") == "0"
+
+
 def test_protected_route_rejects_unauthenticated_request():
     fresh_client = TestClient(app)
     resp = fresh_client.get("/api/vessels")
