@@ -117,7 +117,7 @@ def microsoft_login():
         max_age=OAUTH_STATE_MAX_AGE_SECONDS,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite="none",
     )
     return response
 
