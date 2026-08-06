@@ -38,7 +38,7 @@ def _set_session_cookie(response: Response, user_id: int) -> None:
         max_age=COOKIE_MAX_AGE_SECONDS,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="lax",
+        samesite="none",
     )
 
 
@@ -117,7 +117,7 @@ def microsoft_login():
         max_age=OAUTH_STATE_MAX_AGE_SECONDS,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite="none",
+        samesite="lax",
     )
     return response
 
