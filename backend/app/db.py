@@ -8,7 +8,11 @@ from app.config import settings
 # `pool_pre_ping=True` makes SQLAlchemy test each pooled connection with a lightweight query
 # before reusing it, so a connection that went stale (e.g. Postgres container restarted) is
 # transparently replaced instead of raising on the next request.
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    connect_args={"prepare_threshold": None},
+)
 
 # Factory for new Session objects. `autoflush=False`/`autocommit=False` means changes are only
 # sent to the DB on an explicit `.flush()`/`.commit()`, giving routers full control over when
