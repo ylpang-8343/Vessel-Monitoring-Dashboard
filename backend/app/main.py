@@ -3,6 +3,7 @@
 Run with `uvicorn app.main:app` (see README.md).
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
@@ -12,7 +13,18 @@ from app.config import settings
 from app.db import Base, SessionLocal, engine
 from app.dependencies import get_current_user, require_admin
 from app.models import SourceKind, TrackingSource
-from app.routers import auth, bookings, bulk_upload, history, notifications, reports, tracking_sources, users, vessels
+from app.routers import (
+    auth,
+    bookings,
+    bulk_upload,
+    history,
+    insights,
+    notifications,
+    reports,
+    tracking_sources,
+    users,
+    vessels,
+)
 from app.services import booking_worker, report_worker
 from app.services.tracking_worker import start_scheduler, stop_scheduler
 
@@ -68,6 +80,23 @@ def _seed_tracking_sources() -> None:
         db.close()
 
 
+def _check_cookie_config() -> None:
+    """Warn loudly at startup about a cookie configuration browsers will silently reject.
+
+    `SameSite=None` without `Secure` is dropped by every modern browser: the login response
+    looks completely healthy (200, Set-Cookie present), the cookie is simply never stored, and
+    every subsequent request reads as logged-out. Nothing in the app can detect that at runtime,
+    so the only place to catch it is here, against the configuration itself.
+    """
+    if settings.cookie_samesite == "none" and not settings.cookie_secure:
+        logging.getLogger("uvicorn.error").error(
+            "COOKIE CONFIG ERROR: cookie_samesite='none' requires cookie_secure=true — browsers "
+            "silently drop a SameSite=None cookie that isn't Secure, so login will appear to "
+            "succeed but every request will read as logged-out. Set COOKIE_SECURE=true (needs "
+            "HTTPS), or use COOKIE_SAMESITE=lax if the frontend and backend share a site."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Runs once at startup (before the app accepts requests) and once at shutdown. Creates any
@@ -75,6 +104,7 @@ async def lifespan(app: FastAPI):
     schedulers: vessel tracking-poll (services/tracking_worker.py), booking/container polling
     (services/booking_worker.py), and the hourly daily-report check (services/report_worker.py)."""
     Base.metadata.create_all(bind=engine)
+    _check_cookie_config()
     _seed_tracking_sources()
     start_scheduler()
     booking_worker.start_scheduler()
@@ -115,6 +145,9 @@ app.include_router(reports.router, dependencies=[Depends(get_current_user)])
 # Container/Booking Tracking module (Section 4) - same access level as vessels: any logged-in
 # user, not admin-only.
 app.include_router(bookings.router, dependencies=[Depends(get_current_user)])
+# Phase 6 (Section 7): AI voyage summaries and exception alerts. Operational views, so the same
+# any-logged-in-user gating as the dashboard rather than admin-only.
+app.include_router(insights.router, dependencies=[Depends(get_current_user)])
 app.include_router(tracking_sources.router, dependencies=[Depends(require_admin)])
 
 

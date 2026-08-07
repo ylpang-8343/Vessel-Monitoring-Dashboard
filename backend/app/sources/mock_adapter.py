@@ -19,7 +19,7 @@ before the sweep on every tick would always have already advanced it past that s
 """
 
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.sources.base import RawReport, TrackingSourceAdapter
 
@@ -32,6 +32,20 @@ WAYPOINT_PORTS = ["Singapore Anchorage", "Port Klang South"]
 # How many poll ticks a vessel stays at ARRIVED_DESTINATION before departing again - see the
 # module docstring for why this needs to be >0.
 DWELL_TICKS = 2
+
+# --- Simulated ETA reporting (Phase 6) ---
+# When a vessel departs toward a destination, the source reports an ETA (Section 3.3's ETA
+# field). The simulated voyage takes one tick, so a realistic "hours away" ETA would never
+# actually be missed - instead the ETA is placed a short interval ahead of *now* and, for a
+# deterministic fraction of vessels, deliberately in the recent past, so that both the on-time
+# and the late path are observable in a demo rather than only one of them.
+ETA_AHEAD = timedelta(hours=18)
+# How far in the past a "running late" vessel's ETA is set. Comfortably beyond the default
+# delay_threshold_minutes (60) so the resulting exception isn't threshold-borderline.
+ETA_OVERDUE_BY = timedelta(hours=6)
+# 1 in N vessels is simulated as running late, chosen by IMO so the same vessel behaves
+# consistently across ticks and restarts rather than flickering between on-time and late.
+LATE_VESSEL_MODULO = 3
 
 
 class MockAdapter(TrackingSourceAdapter):
@@ -59,6 +73,22 @@ class MockAdapter(TrackingSourceAdapter):
         }
         self._vessel_state[imo] = state
         return state
+
+    def _simulated_eta(self, imo: str, destination: str | None, now: datetime) -> datetime | None:
+        """The ETA this source 'reports' for a vessel currently underway toward `destination`.
+
+        None when the vessel has no destination - an ETA is by definition an estimate of arrival
+        at a *specific* place, so there's nothing to estimate (matching Section 3.1's rule that
+        destination-based statuses simply don't apply without one).
+
+        A deterministic slice of vessels (by IMO, see LATE_VESSEL_MODULO) get an ETA already in
+        the past, simulating a source that reported an arrival time the vessel then missed. That
+        is what gives Phase 6's delay detection something real to find in the demo data.
+        """
+        if not destination:
+            return None
+        running_late = imo.isdigit() and int(imo) % LATE_VESSEL_MODULO == 0
+        return now - ETA_OVERDUE_BY if running_late else now + ETA_AHEAD
 
     def poll(self, vessel_imos: list[str], destinations: dict[str, str | None] | None = None) -> list[RawReport]:
         """Advance every given vessel's cycle by one step and return a report for each vessel
@@ -133,6 +163,17 @@ class MockAdapter(TrackingSourceAdapter):
                     occurred_at=now,
                     source_name=self.source_name,
                 )
+
+            # Attach the source-reported ETA (Phase 6). Only meaningful while the vessel is
+            # underway *toward* its destination - i.e. a departure from somewhere that isn't the
+            # destination itself. An arrival needs no ETA (it's happening now), and a departure
+            # *from* the destination is the end of that voyage, not progress toward one. This
+            # mirrors which events the status engine turns into ETA_DESTINATION.
+            underway_to_destination = (
+                report.event_kind == "departed" and destination is not None and report.event_port != destination
+            )
+            if underway_to_destination:
+                report.eta = self._simulated_eta(imo, destination, now)
 
             # Every branch above that reaches here (i.e. didn't `continue` while dwelling)
             # produced exactly one report - advance to the next step for this vessel's next poll.

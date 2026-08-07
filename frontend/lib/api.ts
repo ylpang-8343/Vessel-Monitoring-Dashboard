@@ -103,11 +103,49 @@ export interface StatusEvent {
   source_name: string;
   occurred_at: string;
   recorded_at: string;
+  // The ETA the source reported at this event (Section 3.3); null when it reported none.
+  eta: string | null;
+}
+
+// Mirrors backend/app/models.py's ExceptionKind (Phase 6 / Section 7). "Route deviation" is
+// deliberately absent - see that enum's docstring for why it isn't implemented.
+export type ExceptionKind = "delayed" | "long_port_stay" | "unexpected_port_call";
+
+export interface VesselException {
+  id: number;
+  vessel_name: string;
+  vessel_imo: string;
+  kind: ExceptionKind;
+  message: string;
+  detected_at: string;
+}
+
+// Phase 6's predictive ETA (Section 7), carrying the evidence behind the number so the UI can
+// show how much history it's based on rather than presenting a bare timestamp.
+export interface PredictedEta {
+  predicted_arrival: string;
+  sample_size: number;
+  typical_duration_hours: number;
+  departed_from: string;
+  departed_at: string;
+}
+
+export interface VoyageSummary {
+  summary: string;
+  generated_at: string;
+  source_event_count: number;
+  // True once new tracking events have landed since the summary was written.
+  is_stale: boolean;
 }
 
 export interface VesselHistory {
   vessel: Vessel;
   timeline: StatusEvent[];
+  predicted_eta: PredictedEta | null;
+  // The most recent exceptions only (the backend caps this) — `exception_count` is the true
+  // total, so the UI can say "showing the most recent N of M".
+  exceptions: VesselException[];
+  exception_count: number;
 }
 
 // One row of a bulk-upload preview (Section 3.2), before the user has confirmed import.
@@ -137,12 +175,18 @@ export interface NotificationSettings {
   email_recipients: string | null;
   teams_enabled: boolean;
   teams_webhook_url: string | null;
+  // WhatsApp (Phase 6). `whatsapp_access_token_set` stands in for the token itself, which the
+  // API never sends back - same masking as `smtp_password_set`.
+  whatsapp_enabled: boolean;
+  whatsapp_phone_number_id: string | null;
+  whatsapp_access_token_set: boolean;
+  whatsapp_recipients: string | null;
   daily_report_enabled: boolean;
   daily_report_hour_utc: number;
   daily_report_last_sent_date: string | null;
 }
 
-export type NotificationChannelKind = "email" | "teams";
+export type NotificationChannelKind = "email" | "teams" | "whatsapp";
 export type NotificationLogStatus = "sent" | "skipped" | "failed";
 
 // One row of the Settings → Notifications "recent activity" table.
@@ -377,6 +421,10 @@ export async function updateNotificationSettings(
     email_recipients: string;
     teams_enabled: boolean;
     teams_webhook_url: string;
+    whatsapp_enabled: boolean;
+    whatsapp_phone_number_id: string;
+    whatsapp_access_token: string;
+    whatsapp_recipients: string;
     daily_report_enabled: boolean;
     daily_report_hour_utc: number;
   }>,
@@ -396,6 +444,32 @@ export async function testNotifications(): Promise<NotificationLogEntry[]> {
 /** Trigger the daily report immediately, bypassing its scheduled hour. */
 export async function sendDailyReportNow(): Promise<NotificationLogEntry[]> {
   return handle(await apiFetch("/api/notifications/send-daily-report", { method: "POST" }));
+}
+
+/** Whether AI voyage summaries are usable on this deployment (Phase 6) - the vessel history page
+ * calls this to decide whether to offer the button at all, rather than offering one that fails. */
+export async function getAiStatus(): Promise<{ configured: boolean }> {
+  return handle(await apiFetch("/api/insights/ai-status", { cache: "no-store" }));
+}
+
+/** Every recorded exception (Section 7's "AI Exception Alerts"), newest first, optionally
+ * filtered to one kind. */
+export async function listExceptions(kind?: ExceptionKind): Promise<VesselException[]> {
+  const url = new URL(`${API_BASE}/api/insights/exceptions`);
+  if (kind) url.searchParams.set("kind", kind);
+  return handle(await apiFetch(url.pathname + url.search, { cache: "no-store" }));
+}
+
+/** The cached AI voyage summary for a vessel, or null if none has been generated. A plain read -
+ * it never triggers generation, so opening a vessel page never spends an API call. */
+export async function getVoyageSummary(imo: string): Promise<VoyageSummary | null> {
+  return handle(await apiFetch(`/api/insights/vessels/${imo}/summary`, { cache: "no-store" }));
+}
+
+/** Generate (or regenerate) the AI voyage summary. Rejects with a 503 ApiError when summaries
+ * are unavailable — no API key configured, or the model call failed. */
+export async function generateVoyageSummary(imo: string): Promise<VoyageSummary> {
+  return handle(await apiFetch(`/api/insights/vessels/${imo}/summary`, { method: "POST" }));
 }
 
 export async function getReportSummary(): Promise<ReportSummary> {

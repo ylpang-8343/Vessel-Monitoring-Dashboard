@@ -3,8 +3,19 @@
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, archiveVessel, getVesselHistory, removeVessel, VesselHistory } from "@/lib/api";
+import {
+  ApiError,
+  archiveVessel,
+  generateVoyageSummary,
+  getAiStatus,
+  getVesselHistory,
+  getVoyageSummary,
+  removeVessel,
+  VesselHistory,
+  VoyageSummary,
+} from "@/lib/api";
 import StatusDot, { statusMeta } from "@/app/components/StatusDot";
+import ExceptionBadge from "@/app/components/ExceptionBadge";
 import UserMenu from "@/app/components/UserMenu";
 
 const HISTORY_REFRESH_MS = 30 * 1000;
@@ -24,11 +35,23 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
   const [confirming, setConfirming] = useState<ConfirmAction>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actioning, setActioning] = useState(false);
+  // Phase 6 AI voyage summary (Section 7). Loaded alongside the history; `aiConfigured` decides
+  // whether the panel offers a Generate button or explains that summaries are unavailable.
+  const [summary, setSummary] = useState<VoyageSummary | null>(null);
+  const [aiConfigured, setAiConfigured] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const data = await getVesselHistory(imo);
+      // Fetched together so one round of state updates covers the whole page. The summary is a
+      // plain read - it never triggers generation, so opening this page never spends an API call.
+      const [data, cachedSummary, aiStatus] = await Promise.all([
+        getVesselHistory(imo),
+        getVoyageSummary(imo).catch(() => null),
+        getAiStatus().catch(() => ({ configured: false })),
+      ]);
       setHistory(data);
+      setSummary(cachedSummary);
+      setAiConfigured(aiStatus.configured);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the API");
@@ -90,7 +113,13 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
     );
   }
 
-  const { vessel, timeline } = history;
+  const {
+    vessel,
+    timeline,
+    predicted_eta: predictedEta,
+    exceptions,
+    exception_count: exceptionCount,
+  } = history;
   const latestMeta = statusMeta(vessel.last_event_type);
 
   return (
@@ -130,6 +159,66 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
           <Stat label="Current Location">{vessel.current_location ?? "—"}</Stat>
         </div>
 
+        {/* Phase 6 (Section 7). Each panel renders only when it has something real to say -
+            an exception list with no exceptions, or a prediction with no history behind it,
+            would be noise rather than information. */}
+        {exceptions.length > 0 && (
+          <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+              Exception Alerts ({exceptionCount})
+            </h2>
+            <ul className="space-y-2">
+              {exceptions.map((exception) => (
+                <li key={exception.id} className="flex flex-wrap items-center gap-3 text-sm">
+                  <ExceptionBadge kind={exception.kind} />
+                  <span>{exception.message}</span>
+                  <span className="text-xs text-zinc-500">
+                    detected {new Date(exception.detected_at).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {/* A repeatedly-late vessel accrues one exception per voyage, so the panel shows the
+                current picture and points at the full list rather than growing without bound. */}
+            {exceptionCount > exceptions.length && (
+              <p className="mt-3 text-xs text-zinc-500">
+                Showing the {exceptions.length} most recent of {exceptionCount}.{" "}
+                <Link href="/exceptions" className="text-blue-600 underline">
+                  See all exceptions
+                </Link>
+                .
+              </p>
+            )}
+          </div>
+        )}
+
+        {predictedEta && (
+          <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+            <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Predicted Arrival</h2>
+            <p className="text-sm">
+              <span className="font-medium">{new Date(predictedEta.predicted_arrival).toLocaleString()}</span>{" "}
+              at {vessel.destination_port}
+            </p>
+            {/* The evidence, stated plainly - a prediction from one prior voyage should read
+                differently from one backed by a dozen, so the sample size is always shown. */}
+            <p className="mt-1 text-xs text-zinc-500">
+              Based on {predictedEta.sample_size} previously completed voyage
+              {predictedEta.sample_size === 1 ? "" : "s"} on this route, which took a median of{" "}
+              {formatDuration(predictedEta.typical_duration_hours)}. Departed {predictedEta.departed_from} on{" "}
+              {new Date(predictedEta.departed_at).toLocaleString()}. Derived from this vessel&apos;s own
+              history — not from speed or route data, which this app&apos;s tracking sources don&apos;t provide.
+            </p>
+          </div>
+        )}
+
+        <VoyageSummaryPanel
+          imo={imo}
+          summary={summary}
+          configured={aiConfigured}
+          hasEvents={timeline.length > 0}
+          onGenerated={setSummary}
+        />
+
         <div className="bg-white px-6 py-6 dark:bg-zinc-900">
           <h2 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Movement Timeline</h2>
           {timeline.length === 0 ? (
@@ -150,6 +239,10 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
                     <p className="text-sm font-medium">{event.last_event_text}</p>
                     <p className="text-xs text-zinc-500">
                       {new Date(event.occurred_at).toLocaleString()} · {event.source_name}
+                      {/* The ETA the source reported at this event (Section 3.3's captured
+                          field). Shown inline so a delay alert can be checked against the
+                          timeline it was derived from. */}
+                      {event.eta && <> · ETA reported: {new Date(event.eta).toLocaleString()}</>}
                     </p>
                   </li>
                 );
@@ -201,6 +294,103 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Render a transit duration in whatever unit reads honestly at that magnitude.
+ *
+ * The backend reports hours as a float, which is right for real voyages but renders as a
+ * misleading "0h" for the short ones the simulated tracking feed produces (a whole voyage
+ * completes in one poll tick — seconds at the demo interval, minutes at the default). Saying
+ * "45 seconds" is accurate; "0h" reads as instant travel. */
+function formatDuration(hours: number): string {
+  const minutes = hours * 60;
+  if (minutes < 1) return `${Math.max(1, Math.round(minutes * 60))} seconds`;
+  if (hours < 1) return `${Math.round(minutes)} minutes`;
+  return `${hours}h`;
+}
+
+// AI Voyage Summary panel (Section 7; sketched in the proposal's Figure 3 as a box on this very
+// page). Deliberately generate-on-demand rather than on page load: generation costs an API call,
+// so it happens when a user asks for it, and the result is cached server-side thereafter.
+function VoyageSummaryPanel({
+  imo,
+  summary,
+  configured,
+  hasEvents,
+  onGenerated,
+}: {
+  imo: string;
+  summary: VoyageSummary | null;
+  configured: boolean;
+  hasEvents: boolean;
+  onGenerated: (summary: VoyageSummary) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    setGenerating(true);
+    setError(null);
+    try {
+      onGenerated(await generateVoyageSummary(imo));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to generate the summary");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">AI Voyage Summary</h2>
+        {/* Hidden entirely when unconfigured rather than shown-but-failing, matching how the
+            Microsoft sign-in button and PDF bulk upload behave without their credentials. */}
+        {configured && hasEvents && (
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          >
+            {generating ? "Generating…" : summary ? "Regenerate" : "Generate AI Summary"}
+          </button>
+        )}
+      </div>
+
+      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+
+      {!configured ? (
+        <p className="text-sm text-zinc-500">
+          Unavailable — no <code>ANTHROPIC_API_KEY</code> is configured on the backend. Everything else on
+          this page works regardless.
+        </p>
+      ) : !hasEvents ? (
+        <p className="text-sm text-zinc-500">
+          Nothing to summarise yet — this vessel has no tracking events.
+        </p>
+      ) : summary ? (
+        <>
+          <p className="text-sm leading-relaxed">{summary.summary}</p>
+          <p className="mt-2 text-xs text-zinc-500">
+            Generated {new Date(summary.generated_at).toLocaleString()} from {summary.source_event_count} event
+            {summary.source_event_count === 1 ? "" : "s"}
+            {/* A cached summary written before newer events landed is visibly out of date
+                rather than quietly wrong. */}
+            {summary.is_stale && (
+              <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                New events since — regenerate to update
+              </span>
+            )}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-zinc-500">
+          No summary generated yet. Written from this vessel&apos;s recorded events only — it never adds
+          facts the timeline doesn&apos;t contain.
+        </p>
+      )}
     </div>
   );
 }

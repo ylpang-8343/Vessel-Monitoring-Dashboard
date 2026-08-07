@@ -144,6 +144,34 @@ def test_logout_clears_the_cookie_with_the_same_attributes_it_was_set_with(monke
     assert clear_attrs.get("max-age") == "0"
 
 
+def test_session_cookie_defaults_to_a_combination_browsers_actually_accept():
+    """Regression test for a bug that made local development impossible: the session cookie was
+    hard-coded to `SameSite=None` while `cookie_secure` defaults to false, and browsers silently
+    drop a `SameSite=None` cookie that isn't also `Secure`. Login returned 200 with a Set-Cookie
+    header, the browser stored nothing, and every following request read as logged-out - so the
+    login form appeared to do nothing at all.
+
+    The rule this locks in: whatever the defaults are, they must never be the one pair browsers
+    reject. `SameSite=None` is fine, but only together with `Secure`.
+    """
+    from app.config import settings as app_settings
+
+    _register(email="cookie.defaults@example.com", password="Passw0rd!")
+    fresh_client = TestClient(app)
+    resp = fresh_client.post(
+        "/api/auth/login", json={"email": "cookie.defaults@example.com", "password": "Passw0rd!"}
+    )
+    attrs = _cookie_attributes(resp.headers["set-cookie"])
+
+    if attrs.get("samesite", "").lower() == "none":
+        assert "secure" in attrs, (
+            "SameSite=None without Secure is silently rejected by browsers - the cookie is never "
+            "stored and the app behaves as though login failed"
+        )
+    # And the default configuration must be internally consistent for the same reason.
+    assert not (app_settings.cookie_samesite == "none" and not app_settings.cookie_secure)
+
+
 def test_protected_route_rejects_unauthenticated_request():
     fresh_client = TestClient(app)
     resp = fresh_client.get("/api/vessels")

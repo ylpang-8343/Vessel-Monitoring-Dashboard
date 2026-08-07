@@ -154,10 +154,50 @@ that's a bug — check the relevant file mentioned so you know where to start lo
 - [ ] As a regular (non-admin) user, confirm `/containers` is still reachable (this module isn't
       admin-gated, matching the vessel dashboard) but Settings still isn't.
 
-## 7. Cross-cutting checks
+## 7. Phase 6 — AI summaries, delay detection, exceptions, WhatsApp
 
-- [ ] Log out entirely and try navigating directly to `/`, `/containers`, `/reports`, `/map`, and
-      `/settings` by URL → every one redirects to `/login` (no page renders data while logged out).
+Some of these need a vessel that is genuinely late. The simulated feed does that for you: a
+vessel whose IMO number is divisible by 3 is reported with an ETA already in the past, so
+register one (e.g. IMO `3333333`) with a destination set and give it a few poll ticks.
+
+- [ ] On a vessel's history page, look at the **Movement Timeline** — departure events toward a
+      destination now show "ETA reported: …". That reported ETA is what every delay claim is
+      measured against, so you can check any alert against the line right below it.
+- [ ] Go to **Exceptions** (`/exceptions`) → the late vessel appears with a red "Delayed" badge
+      and a message stating exactly how late and against which ETA.
+- [ ] Click each filter chip (Delayed / Long Port Stay / Unexpected Port Call) → the list narrows
+      correctly. Click a row → it opens that vessel's history.
+- [ ] *(Optional)* Set `LONG_PORT_STAY_HOURS=0` in `backend/.env` and restart → any vessel sitting
+      "At Port" is flagged with a "Long Port Stay" exception on the next tick.
+- [ ] On the late vessel's history page, confirm the **Exception Alerts** panel appears. If the
+      vessel has been flagged many times, it shows only the most recent few plus "Showing the N
+      most recent of M · See all exceptions" — it should never grow to dozens of stacked rows.
+- [ ] Let a vessel complete at least one full voyage to its destination, then catch it underway
+      again → a **Predicted Arrival** panel appears, stating how many completed voyages it
+      averaged and how long they took. Before any voyage completes, the panel is correctly absent
+      rather than showing a guess.
+- [ ] **AI Voyage Summary**: with no `ANTHROPIC_API_KEY` set, the panel says it's unavailable and
+      everything else on the page still works — that's correct, not a bug. With a key set,
+      restart the backend, click **Generate AI Summary** → a plain-language paragraph appears
+      describing only what the timeline actually contains. Revisit the page → it loads instantly
+      from cache without regenerating. Wait for new tracking events → it shows "New events since
+      — regenerate to update".
+- [ ] **WhatsApp**: Settings → Notifications → fill in the WhatsApp card (phone number ID, access
+      token, comma-separated recipients) and save. Click **Send Test Notification** → a `whatsapp`
+      row appears in Recent Activity. Without valid credentials it should log `skipped`/`failed`
+      with a clear reason, never a silent success.
+- [ ] Re-save the WhatsApp card *without* re-entering the access token → the stored token is kept,
+      not wiped (the field shows "•••••••• (unchanged)").
+
+## 8. Cross-cutting checks
+
+- [ ] **Log in at all.** If the login form appears to do nothing — no error, no redirect — check
+      `COOKIE_SAMESITE`/`COOKIE_SECURE` before anything else. `SameSite=None` without `Secure` is
+      silently discarded by browsers, so login "succeeds" (HTTP 200) while the cookie is never
+      stored. The backend logs a startup error for that combination; see the README's Notes.
+- [ ] Log out entirely and try navigating directly to `/`, `/containers`, `/exceptions`,
+      `/reports`, `/map`, and `/settings` by URL → every one redirects to `/login` (no page
+      renders data while logged out).
       **Re-run this one on the deployed site too, not just locally.** Logging out depends on the
       browser accepting the backend's cookie-clearing response, and the rules for that are
       stricter when the frontend and backend sit on different domains than when they're both on

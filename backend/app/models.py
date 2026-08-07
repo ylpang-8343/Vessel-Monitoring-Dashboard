@@ -109,6 +109,14 @@ class Vessel(Base):
     events: Mapped[list["StatusEvent"]] = relationship(
         back_populates="vessel", cascade="all, delete-orphan", order_by="StatusEvent.occurred_at"
     )
+    # Phase 6 (Section 7). Both cascade-delete with the vessel, same as `events` - an exception
+    # or AI summary about a vessel that no longer exists has nothing to point at.
+    exceptions: Mapped[list["VesselException"]] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan", order_by="VesselException.detected_at"
+    )
+    voyage_summary: Mapped["VoyageSummary | None"] = relationship(
+        back_populates="vessel", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class StatusEvent(Base):
@@ -133,6 +141,16 @@ class StatusEvent(Base):
     # When our own tracking worker recorded it - usually close to occurred_at, but kept
     # separate in case a source ever reports events out of order or with a delay.
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # The ETA the source reported *at the time of this event* (Section 3.3 lists ETA among the
+    # captured fields). NULL when the source didn't report one - e.g. a vessel with no
+    # destination set, or an arrival event where an ETA is no longer meaningful.
+    #
+    # This is what makes Phase 6's delay detection real rather than guessed: "delayed" is
+    # arithmetic against a source-reported ETA (see services/delay_detector.py), not an
+    # inference. Until Phase 6 the app had no ETA anywhere, which is exactly why Section 6.E's
+    # "Red = Delayed" colour and Figure 4's "Delayed" map legend sat unused - see
+    # services/notification_service.py's original scope note.
+    eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     vessel: Mapped["Vessel"] = relationship(back_populates="events")
 
@@ -221,11 +239,13 @@ class BookingEvent(Base):
 
 
 class NotificationChannel(str, enum.Enum):
-    """The two channels Section 6.C calls out as available "at launch" - WhatsApp is explicitly
-    scoped as a future enhancement in the proposal, so it isn't modelled here at all."""
+    """Email and Teams are Section 6.C's "at launch" channels; WhatsApp is the future
+    enhancement the proposal's own Figure 5 labels "planned for phase 2 rollout", delivered here
+    as part of Phase 6 (Section 9)."""
 
     EMAIL = "email"
     TEAMS = "teams"
+    WHATSAPP = "whatsapp"
 
 
 class NotificationStatus(str, enum.Enum):
@@ -265,6 +285,14 @@ class NotificationSettings(Base):
     teams_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     teams_webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # WhatsApp via Meta's WhatsApp Business Cloud API (Phase 6). Needs a phone-number id and a
+    # bearer access token from the Meta app; recipients are comma-separated E.164 numbers.
+    # Stored plaintext for this project's scope, same posture as smtp_password above.
+    whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    whatsapp_phone_number_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    whatsapp_access_token: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    whatsapp_recipients: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # Daily report (Section 7 / Phase 4) - built and sent via whichever of the two channels
     # above are enabled, on the given UTC hour. See services/report_worker.py for how this is
     # actually scheduled (a lightweight once-per-hour check rather than reconfiguring
@@ -295,3 +323,73 @@ class NotificationLog(Base):
     # Why it was skipped/failed, e.g. "SMTP host not configured" or an exception message.
     detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExceptionKind(str, enum.Enum):
+    """The exception types Section 7's "AI Exception Alerts" bullet lists that this app can
+    actually ground in data it holds.
+
+    Detection is deliberately **rule-based, not model-inferred** (see
+    services/exception_detector.py) - an alert that fires is one you can audit against a
+    timestamp and a threshold. The AI layer in Phase 6 is the voyage *narrative*
+    (services/ai_service.py), not the alerting.
+
+    Section 7 also lists "route deviations", which is **not** implemented: detecting a deviation
+    needs a planned route to deviate *from*, and nothing in the app (or in AIS-style position
+    data - Section 3.10) supplies one. Rather than invent a plausible-looking signal, it's left
+    out, consistent with how load/discharge categorisation was handled in 3.10.
+    """
+
+    # Past the source-reported ETA - either arrived late, or still not arrived. This is the one
+    # that lights up Section 6.E's "Red = Delayed" colour.
+    DELAYED = "delayed"
+    # Sat AT_PORT longer than the configured threshold ("unusually long port stays").
+    LONG_PORT_STAY = "long_port_stay"
+    # Called at a port this vessel has never called at before and that isn't its destination
+    # ("unexpected port calls"). "Unexpected" is defined precisely as *not seen in this vessel's
+    # own recorded history*, so the claim is checkable rather than a vibe.
+    UNEXPECTED_PORT_CALL = "unexpected_port_call"
+
+
+class VesselException(Base):
+    """One detected exception for a vessel (Section 7's "AI Exception Alerts"). Persisted rather
+    than recomputed on the fly so that (a) each distinct exception notifies exactly once, and
+    (b) the Exceptions page can show a history instead of only what's true this second."""
+
+    __tablename__ = "vessel_exceptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), nullable=False, index=True)
+    kind: Mapped[ExceptionKind] = mapped_column(Enum(ExceptionKind), nullable=False)
+    # Human-readable explanation shown in the UI and sent in notifications, e.g.
+    # "Arrived Pasir Gudang 6h 12m after the reported ETA".
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Stable identity for "this same exception", so re-running detection on later ticks updates
+    # nothing and re-notifies nobody. Built from vessel + kind + the specific event/port it's
+    # about (see exception_detector.py), and unique across the table.
+    dedupe_key: Mapped[str] = mapped_column(String(200), unique=True, index=True, nullable=False)
+
+    vessel: Mapped["Vessel"] = relationship(back_populates="exceptions")
+
+
+class VoyageSummary(Base):
+    """A cached AI-generated plain-language narrative of one vessel's voyage (Section 7's "AI
+    Voyage Summary"; the proposal's Figure 3 sketches it as a panel on the vessel history page).
+
+    Cached per-vessel rather than regenerated per view so repeat visits are instant and don't
+    re-bill an API call. `source_event_count` records how many StatusEvents the summary was
+    written from - the frontend uses it to show a "new events since this summary" hint, so a
+    stale summary is visibly stale instead of quietly wrong.
+    """
+
+    __tablename__ = "voyage_summaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # One summary per vessel - regenerating overwrites in place rather than accumulating.
+    vessel_id: Mapped[int] = mapped_column(ForeignKey("vessels.id"), unique=True, nullable=False, index=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    source_event_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    vessel: Mapped["Vessel"] = relationship(back_populates="voyage_summary")

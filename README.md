@@ -1,6 +1,6 @@
-# Vessel Monitoring Dashboard — Phases 1-5
+# Vessel Monitoring Dashboard — Phases 1-6
 
-Implements Phases 1-5 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
+Implements all six phases of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Section 9):
 
 - **Phase 1**: vessel registration, manual + bulk add (Excel/CSV/PDF with AI-extraction review),
   automated tracking via a pluggable source adapter (mock adapter for now — see below), dashboard
@@ -24,13 +24,15 @@ Implements Phases 1-5 of `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` (Secti
   vessel dashboard on purpose — same search/filter/colour-coding/archive patterns, and the same
   Settings → Tracking Sources screen manages both vessel and carrier sources. See "Phase 5:
   Container/Booking Tracking" below for what's deliberately out of scope and why.
+- **Phase 6**: the AI/insight features (Section 7) — an AI voyage summary on each vessel's history
+  page, delay detection, a predictive ETA from the vessel's own completed voyages, exception
+  alerts at `/exceptions`, and WhatsApp as a third notification channel. See "Phase 6: AI features
+  and exception alerts" below for what's genuinely AI, what's deliberately rule-based, and what
+  isn't implemented.
 - **Auth**: email/password login and registration, plus optional "Sign in with Microsoft", gating
   the whole app. See "First-time setup" below — registering (by either method) never grants admin,
   so there's a required bootstrap step. See "Sign in with Microsoft: setup" for enabling the
   Microsoft option.
-
-Not yet built (see `Vessel_Monitoring_Dashboard_Proposal_Final.pdf` Section 9, Phase 6): AI voyage
-summaries, delay detection, predictive ETA, exception alerts, and WhatsApp notifications.
 
 ## Why tracking data is simulated
 
@@ -52,8 +54,10 @@ polls a `BookingSourceAdapter` interface (`backend/app/sources/booking_base.py`)
 - Docker Desktop (for PostgreSQL)
 - Python 3.12+
 - Node.js 20+
-- An Anthropic API key if you want PDF bulk-upload extraction to work (Section 3.2). Without it,
-  PDF upload returns a clear "unavailable" error; Excel/CSV upload works regardless.
+- An Anthropic API key if you want PDF bulk-upload extraction (Section 3.2) and AI voyage
+  summaries (Phase 6) to work. Without it both report a clear "unavailable" message and
+  everything else — Excel/CSV upload, delay detection, exception alerts, predictive ETA — works
+  regardless.
 
 ## Running locally
 
@@ -183,6 +187,55 @@ vessel registration; Section 4 doesn't call for an equivalent here) and notifica
 (Section 6.C/7 are scoped to the vessel dashboard) — a booking event doesn't trigger an email/Teams
 alert or appear in `/reports`.
 
+## Phase 6: AI features and exception alerts
+
+Section 7's list, delivered with a clear split between what a model does well and what it
+shouldn't be doing at all.
+
+**AI Voyage Summary** — on each vessel's history page (where the proposal's Figure 3 sketches
+it). Click "Generate AI Summary" to turn the recorded timeline into a plain-language narrative
+via Claude. Generation is on demand, never on page load, so opening a vessel never silently costs
+an API call; the result is cached per vessel and marked "new events since — regenerate to update"
+once the timeline moves on. Needs `ANTHROPIC_API_KEY`; without it the panel says so and every
+other part of the page works as normal.
+
+**Delay detection** — this required closing a real data gap first. Section 3.3 lists ETA among
+the fields a tracking source reports, but nothing in the app captured one until now, which is
+exactly why earlier phases refused to show a "Delayed" status (Section 3.10's "don't guess"
+reasoning). Tracking sources now report an ETA per event (`StatusEvent.eta`, shown inline on the
+timeline), so "delayed" is arithmetic against a real reported time: late arrival, or still
+underway past the ETA, beyond `DELAY_THRESHOLD_MINUTES` (default 60). This finally uses the red
+"Delayed" colour Section 6.E's table assigns and Figure 4's map legend shows.
+
+**Exception alerts** at `/exceptions` — delays, unusually long port stays
+(`LONG_PORT_STAY_HOURS`, default 72), and unexpected port calls. Each fires a notification once,
+through the same channels as everything else.
+
+> **Detection is rule-based, not model-inferred — deliberately.** An alert is a claim that
+> something is wrong, and the useful property of such a claim is that you can check it: "arrived
+> 6h 12m after the reported ETA of 14:00" is auditable against the timeline shown right below it.
+> Rules also cost nothing per tick and behave identically on identical input. The model's job
+> here is the *narrative*, which is a genuine language task; the alerting is arithmetic.
+
+**Predictive ETA** — shown while a vessel is underway, computed as the median transit time of
+that vessel's own previously completed voyages on the same route, with the sample size always
+displayed. The proposal describes this as using "vessel speed, route, and historical data"; of
+those, only historical data actually exists here (AIS-style reports carry no speed or route
+geometry), so the panel says so rather than implying more. No prediction is shown at all until
+there's at least one completed prior voyage.
+
+**WhatsApp** — a third channel alongside Email and Teams, configured at Settings → Notifications.
+Uses Meta's WhatsApp Business Cloud API, so it needs a phone-number ID and an access token rather
+than a single webhook URL. One request is sent per recipient; if any recipient fails the whole
+attempt is logged `failed` with the offending numbers, so a partial delivery never reads as a
+clean success.
+
+**Deliberately not implemented**: **route-deviation alerts** (Section 7's fourth bullet) — a
+deviation needs a planned route to deviate *from*, and neither this app nor AIS-style tracking
+supplies one; inventing a signal from port calls alone would be exactly the guesswork Section 3.10
+argues against. **ETA-change notifications** — they'd fire on every routine source revision, which
+is noise rather than signal.
+
 ## Tests
 
 ```bash
@@ -197,14 +250,25 @@ covering auth and all five phases. `verification/REPORT.md` has the results of t
 
 ## Notes
 
+- **Session cookies across domains.** `COOKIE_SAMESITE` defaults to `lax`, which is correct when
+  the frontend and backend share a site — including local dev, since `:3000` → `:8000` counts as
+  same-site (SameSite ignores the port). Set it to `none` **only** for a split deployment across
+  genuinely different domains, and then `COOKIE_SECURE=true` (and therefore HTTPS) is mandatory:
+  browsers silently discard a `SameSite=None` cookie that isn't also `Secure`. The failure is
+  nasty precisely because nothing errors — login returns 200 with a `Set-Cookie` header, the
+  browser stores nothing, and every request afterwards reads as logged-out, so the login form
+  just appears to do nothing. The backend logs a loud startup error if these two are set
+  inconsistently.
 - Tables are created automatically on backend startup (`Base.metadata.create_all`) — there's no
   migration tool wired up yet. This only *adds* new tables/columns, it doesn't alter existing
   ones, so a schema change (like Phase 2's new `archived_at` column, or the Microsoft sign-in
-  work's `users.password_hash` becoming nullable) on a database that already has the old shape
-  will error on first query. If you hit `UndefinedColumn`/`NOT NULL constraint` errors after
-  pulling schema changes, reset the local dev volume: `docker compose down -v && docker compose
-  up -d`. Add Alembic before this touches real data you care about preserving across schema
-  changes.
+  work's `users.password_hash` becoming nullable, or Phase 6's new `status_events.eta` column and
+  extra `whatsapp` notification-channel enum value) on a database that already has the old shape
+  will error on first query. If you hit `UndefinedColumn`/`NOT NULL constraint`/`invalid input
+  value for enum` errors after pulling schema changes, reset the local dev volume: `docker
+  compose down -v && docker compose up -d`. **Add Alembic before this touches real data** — every
+  phase so far has needed a reset, which is fine for demo data and unacceptable for anything
+  you'd miss.
 - The mock tracking worker advances each vessel's simulated voyage by one step every poll tick
   (`TRACKING_POLL_INTERVAL_SECONDS` in `.env`, default 300s/5min to match the dashboard's
   "auto-refreshed every 5 minutes"). Lower it in `.env` for faster manual testing. It only runs

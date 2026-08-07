@@ -20,6 +20,12 @@ class RawReport:
     current_location: str
     occurred_at: datetime
     source_name: str
+    # The source's estimated time of arrival at the vessel's destination as of this report
+    # (Section 3.3's "ETA" captured field). Optional with a None default so existing adapters
+    # and tests that predate Phase 6 keep constructing RawReport unchanged; a source that
+    # doesn't report an ETA simply leaves it unset, and delay detection then has nothing to
+    # compare against for that vessel (which is correct - see services/delay_detector.py).
+    eta: datetime | None = None
 
 
 class TrackingSourceAdapter(ABC):

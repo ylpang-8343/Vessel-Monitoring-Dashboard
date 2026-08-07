@@ -683,10 +683,11 @@ function NotificationsTab() {
   return (
     <>
       <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-        Triggered on vessel arrival, departure, and arrival at destination (Section 6.C). ETA-change and delay
-        alerts aren&apos;t included — this app doesn&apos;t track a planned ETA to compare against, the same reason
-        the dashboard itself never shows a &quot;Delayed&quot; status (Section 3.10). Every attempt is logged below,
-        including when a channel is enabled but not fully configured.
+        Triggered on vessel arrival, departure, arrival at destination (Section 6.C), and on detected
+        exceptions — delays, unusually long port stays, and unexpected port calls (Section 7). Delay alerts
+        became possible in Phase 6, when tracking sources started reporting an ETA to measure against;
+        ETA-<em>change</em> alerts are still excluded, since they&apos;d fire on every routine source revision.
+        Every attempt is logged below, including when a channel is enabled but not fully configured.
       </div>
 
       {error && <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>}
@@ -694,6 +695,7 @@ function NotificationsTab() {
       <div className="grid grid-cols-1 gap-4 bg-white px-6 py-4 md:grid-cols-2 dark:bg-zinc-900">
         <EmailSettingsCard settings={settings} onSaved={refresh} />
         <TeamsSettingsCard settings={settings} onSaved={refresh} />
+        <WhatsAppSettingsCard settings={settings} onSaved={refresh} />
       </div>
 
       <div className="bg-white px-6 pb-4 dark:bg-zinc-900">
@@ -885,6 +887,76 @@ function TeamsSettingsCard({ settings, onSaved }: { settings: NotificationSettin
         className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
       >
         {saving ? "Saving…" : "Save Teams Settings"}
+      </button>
+    </div>
+  );
+}
+
+// WhatsApp channel config card (Phase 6) - the proposal's Figure 5 labels WhatsApp a future
+// enhancement; this is it. Uses Meta's WhatsApp Business Cloud API, so it needs a phone-number
+// ID and an access token from the Meta app rather than a single webhook URL like Teams.
+// `accessToken` starts blank whether or not one is stored, same contract as the SMTP password.
+function WhatsAppSettingsCard({ settings, onSaved }: { settings: NotificationSettings; onSaved: () => void }) {
+  const [enabled, setEnabled] = useState(settings.whatsapp_enabled);
+  const [phoneNumberId, setPhoneNumberId] = useState(settings.whatsapp_phone_number_id ?? "");
+  const [accessToken, setAccessToken] = useState("");
+  const [recipients, setRecipients] = useState(settings.whatsapp_recipients ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await updateNotificationSettings({
+        whatsapp_enabled: enabled,
+        whatsapp_phone_number_id: phoneNumberId,
+        // Omitted when left blank so re-saving the card doesn't wipe a stored token.
+        ...(accessToken ? { whatsapp_access_token: accessToken } : {}),
+        whatsapp_recipients: recipients,
+      });
+      setAccessToken("");
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save WhatsApp settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+      <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        WhatsApp
+      </label>
+      <div className="space-y-2">
+        <FieldRow label="Phone Number ID" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="1234567890" />
+        <FieldRow
+          label="Access Token"
+          value={accessToken}
+          onChange={setAccessToken}
+          type="password"
+          placeholder={settings.whatsapp_access_token_set ? "•••••••• (unchanged)" : ""}
+        />
+        <FieldRow
+          label="Recipients"
+          value={recipients}
+          onChange={setRecipients}
+          placeholder="+60123456789, +6598765432"
+        />
+      </div>
+      <p className="mt-2 text-xs text-zinc-500">
+        Uses Meta&apos;s WhatsApp Business Cloud API. One message is sent per recipient; if any recipient
+        fails, the whole attempt is logged as failed with the offending numbers.
+      </p>
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save WhatsApp Settings"}
       </button>
     </div>
   );

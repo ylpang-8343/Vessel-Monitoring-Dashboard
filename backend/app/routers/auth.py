@@ -31,17 +31,17 @@ OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60
 # These must stay identical across setting and clearing it: a browser only removes a cookie when
 # the clearing `Set-Cookie` repeats the same attributes it was stored with, and - more sharply -
 # a cross-site response carrying `SameSite=Lax` is rejected outright rather than applied. When
-# the frontend and backend are served from different domains (any real deployment; not local dev,
-# where :3000 -> :8000 is same-site), logging out is exactly such a cross-site request. Clearing
-# the cookie with anything less than these attributes means the browser silently ignores the
-# deletion, the session survives, and the user stays logged in after pressing "Log out" - see
+# the frontend and backend are served from different domains, logging out is exactly such a
+# cross-site request. Clearing the cookie with anything less than these attributes means the
+# browser silently ignores the deletion, the session survives, and the user stays logged in after
+# pressing "Log out" - see
 # tests/test_auth.py::test_logout_clears_the_cookie_with_the_same_attributes_it_was_set_with.
 #
-# `samesite="none"` (which browsers only honour together with `Secure`) is what allows the cookie
-# to be sent cross-domain at all; combined with the explicit CORS origin list in app/main.py,
-# that's what makes a split frontend/backend deployment work. Set COOKIE_SECURE=true in the
-# backend's environment for any HTTPS deployment (see .env.example).
-SESSION_COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "none"
+# SameSite comes from config rather than being hard-coded, because the right value depends on the
+# deployment: "lax" for a same-site setup (including local dev, where :3000 -> :8000 is same-site),
+# "none" + Secure for a split frontend/backend across different domains. Hard-coding "none" makes
+# local dev impossible, since browsers silently drop a `SameSite=None` cookie with no `Secure` -
+# see config.py's cookie_samesite comment and main.py's startup consistency check.
 SESSION_COOKIE_PATH = "/"
 
 # The CSRF state cookie needs `SameSite=Lax`, not `none`: it only has to survive the top-level
@@ -62,7 +62,7 @@ def _set_session_cookie(response: Response, user_id: int) -> None:
         path=SESSION_COOKIE_PATH,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite=SESSION_COOKIE_SAMESITE,
+        samesite=settings.cookie_samesite,
     )
 
 
@@ -107,14 +107,14 @@ def logout(response: Response):
     revoked anywhere, it just stops being sent by the browser after this.
 
     Every attribute here has to mirror `_set_session_cookie()` exactly, or the browser won't
-    apply the deletion at all on a cross-domain deployment - see SESSION_COOKIE_SAMESITE above
-    for why."""
+    apply the deletion at all on a cross-domain deployment - see the cookie-attribute comment
+    at the top of this module for why."""
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         path=SESSION_COOKIE_PATH,
         httponly=True,
         secure=settings.cookie_secure,
-        samesite=SESSION_COOKIE_SAMESITE,
+        samesite=settings.cookie_samesite,
     )
     return None
 

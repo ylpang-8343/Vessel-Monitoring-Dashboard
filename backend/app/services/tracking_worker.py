@@ -10,7 +10,8 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import StatusEvent, TrackingSource, Vessel
 from app.services.archive_worker import run_archive_sweep
-from app.services.notification_service import notify_vessel_event
+from app.services.exception_detector import run_exception_sweep
+from app.services.notification_service import notify_exception, notify_vessel_event
 from app.services.status_engine import derive_event_type, format_last_event_text
 from app.sources.mock_adapter import MockAdapter
 
@@ -79,6 +80,8 @@ def run_tracking_poll() -> int:
                 last_event_text=format_last_event_text(report),
                 source_name=report.source_name,
                 occurred_at=report.occurred_at,
+                # Section 3.3's ETA field, used by Phase 6's delay detection.
+                eta=report.eta,
             )
             db.add(event)
             new_events.append((vessel, event))
@@ -94,6 +97,21 @@ def run_tracking_poll() -> int:
                 notify_vessel_event(db, vessel, event)
             except Exception:
                 logger.exception("notification failed for vessel %s event %s", vessel.imo_number, event.id)
+
+        # Exception detection (Phase 6 / Section 7) runs *after* this tick's events are
+        # committed, so a delay or unexpected port call is spotted on the same tick that
+        # produced it rather than a tick later. Each newly-detected exception notifies once -
+        # the dedupe key in exception_detector.py is what prevents re-alerting, so this loop
+        # only ever sees genuinely new ones. Wrapped like the notifications above: a detector
+        # problem must not fail a poll whose vessel data already persisted fine.
+        try:
+            for exception in run_exception_sweep(db):
+                try:
+                    notify_exception(db, exception.vessel, exception)
+                except Exception:
+                    logger.exception("exception notification failed for vessel %s", exception.vessel.imo_number)
+        except Exception:
+            logger.exception("exception sweep failed")
 
         return created
     finally:

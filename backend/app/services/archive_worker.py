@@ -11,15 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import EventType, Vessel
-
-
-def _as_naive_utc(value: datetime) -> datetime:
-    # SQLite (used in tests) drops tzinfo on round-trip even for DateTime(timezone=True)
-    # columns, while Postgres preserves it - normalize to naive UTC so comparisons work
-    # against either backend.
-    if value.tzinfo is not None:
-        return value.astimezone(timezone.utc).replace(tzinfo=None)
-    return value
+from app.services.timeutil import as_naive_utc as _as_naive_utc  # see timeutil.py for why
 
 
 def run_archive_sweep(db: Session, retention_days: int | None = None) -> int:

@@ -16,8 +16,9 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"], dependen
 
 
 def _to_settings_out(settings) -> NotificationSettingsOut:
-    """Build the response shape, masking the stored SMTP password behind a boolean rather than
-    ever sending it back to the browser (see NotificationSettingsOut's docstring)."""
+    """Build the response shape, masking stored secrets (the SMTP password and the WhatsApp
+    access token) behind booleans rather than ever sending them back to the browser - see
+    NotificationSettingsOut's docstring."""
     return NotificationSettingsOut(
         email_enabled=settings.email_enabled,
         smtp_host=settings.smtp_host,
@@ -28,6 +29,10 @@ def _to_settings_out(settings) -> NotificationSettingsOut:
         email_recipients=settings.email_recipients,
         teams_enabled=settings.teams_enabled,
         teams_webhook_url=settings.teams_webhook_url,
+        whatsapp_enabled=settings.whatsapp_enabled,
+        whatsapp_phone_number_id=settings.whatsapp_phone_number_id,
+        whatsapp_access_token_set=bool(settings.whatsapp_access_token),
+        whatsapp_recipients=settings.whatsapp_recipients,
         daily_report_enabled=settings.daily_report_enabled,
         daily_report_hour_utc=settings.daily_report_hour_utc,
         daily_report_last_sent_date=settings.daily_report_last_sent_date,

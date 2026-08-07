@@ -1,6 +1,6 @@
 """Daily report scheduling (Section 7 / Phase 4's "generates daily reports"). Delivered via the
-same two channels as event notifications (Section 6.C): the full report as an Excel attachment
-by email, and a short text summary posted to Teams (Teams webhooks aren't a great fit for
+same channels as event notifications (Section 6.C): the full report as an Excel attachment by
+email, and a short text summary posted to Teams and WhatsApp (neither is a good fit for
 delivering a binary file, so the report proper always goes out by email if enabled).
 
 Scheduling approach: rather than reconfiguring APScheduler's cron trigger every time an admin
@@ -18,7 +18,13 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import NotificationChannel, NotificationLog, NotificationSettings
-from app.services.notification_service import get_settings, log_notification, send_email_with_attachment, send_teams_message
+from app.services.notification_service import (
+    get_settings,
+    log_notification,
+    send_email_with_attachment,
+    send_teams_message,
+    send_whatsapp_message,
+)
 from app.services.report_service import build_excel_report, build_report_summary
 
 logger = logging.getLogger("report_worker")
@@ -57,6 +63,10 @@ def send_daily_report(db: Session, settings: NotificationSettings | None = None)
     if settings.teams_enabled:
         status, detail = send_teams_message(settings, f"{subject}\n{body}")
         entries.append(log_notification(db, NotificationChannel.TEAMS, status, subject, body, detail=detail))
+
+    if settings.whatsapp_enabled:
+        status, detail = send_whatsapp_message(settings, f"{subject}\n{body}")
+        entries.append(log_notification(db, NotificationChannel.WHATSAPP, status, subject, body, detail=detail))
 
     return entries
 

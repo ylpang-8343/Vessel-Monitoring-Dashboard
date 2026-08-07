@@ -1,4 +1,9 @@
-# Verification Report — Phases 1-5 + Auth (password + Microsoft) + Search
+# Verification Report — Phases 1-6 + Auth (password + Microsoft) + Search
+
+> **Latest pass: Phase 6 (Section 7 — AI features, delay/exception detection, WhatsApp).**
+> See "Phase 6" and "Bugs found and fixed this pass" below; everything above that point is the
+> record of earlier passes, carried forward. Screenshots `51`-`62` are fresh this pass.
+
 
 Tested against `Vessel_Monitoring_Dashboard_Proposal_Final.pdf`, Sections 3.1-3.9, 4, 6.A-6.E, 7,
 and Section 9 (Phases 1-5), plus the authentication layer (email/password **and** "Sign in with
@@ -20,6 +25,10 @@ tracking worker and the new booking worker share this one setting. This pass did
 database at the end.
 
 ## Result summary
+
+*(Result summary below is from the Phase 5 pass; this pass's totals are **181/181 pytest**,
+`tsc --noEmit` and `eslint` clean, with 51 new Phase 6 tests plus 1 regression test for the
+login bug — see the Phase 6 section at the end.)*
 
 - Backend: **130/130 pytest tests pass** (`cd backend && pytest`) — 23 new tests for Phase 5
   (mock booking adapter lifecycle, "Last Event" text formatting, the bookings CRUD/search/filter/
@@ -268,9 +277,115 @@ fresh-Microsoft-signup case and the linked-local-account case.
   with the existing demo data (including the Microsoft-linked account from the previous pass)
   after the Phase 5 changes to `main.py`/`models.py`/`schemas.py`/`settings/page.tsx`.
 
-## Known gaps (unchanged, out of scope for this pass)
+---
 
-Phase 6 (Section 9): AI voyage summary, delay detection, predictive ETA, exception alerts, and
-WhatsApp notifications remain explicitly deferred/unbuilt - the proposal itself scopes these as a
-future enhancement. Only Microsoft is implemented as a social/SSO sign-in option - no other
-providers (Google, etc.) were requested.
+## Phase 6 — AI features, delay/exception detection, WhatsApp (Section 7, new this pass)
+
+Backend: `StatusEvent.eta` (closing a Section 3.3 data gap - see below), `services/ai_service.py`
+(Claude-backed voyage summary), `services/exception_detector.py` (rule-based detectors),
+`services/predictive_eta.py` (median of the vessel's own completed voyages),
+`services/timeutil.py` (shared naive-UTC helper, extracted from `archive_worker.py`), WhatsApp in
+`notification_service.py`, new `VesselException`/`VoyageSummary` tables, and `routers/insights.py`.
+Frontend: `/exceptions` page, `ExceptionBadge`, AI summary + predicted-ETA + exception panels on
+the vessel history page, and a WhatsApp card in Settings → Notifications.
+
+**Delay detection required closing a real data gap first, not working around one.** Section 3.3
+lists ETA among the fields a tracking source reports, but nothing in the app captured one, which
+is precisely why Phases 4/5 declined to implement delay alerts (Section 3.10's "don't guess"
+reasoning, quoted in `notification_service.py`'s original scope note) and why Section 6.E's red
+"Delayed" colour sat unused. Rather than inferring lateness, this pass added `StatusEvent.eta`
+end-to-end (`RawReport.eta` → mock adapter → tracking worker → timeline UI), so a delay is now
+arithmetic against a real reported time and is checkable against the timeline shown directly
+below the alert — visible in `54`.
+
+| Requirement (Section 7) | Result | Evidence |
+|---|---|---|
+| AI Voyage Summary | Pass | Panel on the vessel history page (`54`); `test_ai_service.py` (6 tests: prompt carries the real timeline, model ID, refusal handling, API failure, no-key, empty timeline); `test_insights_api.py` cache/staleness/regenerate tests |
+| Unavailable-not-broken without `ANTHROPIC_API_KEY` | Pass | `54` shows the panel explaining it while the rest of the page works; `test_summary_generation_is_503_without_an_api_key` |
+| AI Delay Detection | Pass | `52`, `53`; `test_exception_detector.py` (late arrival, on-time, overdue-in-transit, no-ETA, superseded-ETA) |
+| AI Exception Alerts — long port stay, unexpected port call | Pass | `test_exception_detector.py`; each alerts once (`test_the_same_exception_is_only_recorded_once`) |
+| AI Predictive ETA | Pass | `54`; `test_predictive_eta.py` (median not mean, outlier resistance, incomplete legs excluded, no-basis cases) |
+| WhatsApp notifications | Pass | Settings card `56`; `test_whatsapp_notifications.py` (Cloud API request shape, per-recipient send, partial-failure handling, token masking) |
+| Exceptions reachable by any logged-in user, not admin-only | Pass | `52` as admin; `test_insights_require_login` for the gating |
+
+**Deliberately not implemented, and why** — consistent with how Section 3.10 was handled
+throughout:
+- **Route-deviation alerts** (Section 7's fourth bullet): detecting a deviation needs a planned
+  route to compare against. Neither the app nor AIS-style position reporting supplies one, so
+  there is no honest signal to compute. Documented in `models.ExceptionKind`'s docstring and
+  surfaced to users in the Exceptions page banner rather than silently omitted.
+- **ETA-change notifications**: would fire on every routine source revision — noise, not signal.
+- **Detection is rule-based rather than model-inferred.** This is a design decision, not a
+  shortcut: an alert is a claim that something is wrong, and its value depends on being
+  checkable. "Arrived 6h 0m after the reported ETA of 06 Aug 2026, 20:34 UTC" can be verified
+  against the timeline; a model's impression cannot. The AI in Phase 6 is the *narrative*, which
+  is a genuine language task.
+
+### Bugs found and fixed this pass
+
+**1. Login was completely broken in local development (pre-existing, not from Phase 6).** Caught
+immediately: the Playwright walkthrough timed out waiting for the post-login redirect. The
+session cookie was hard-coded to `SameSite=None` (added in commit `d04f6a3`, presumably for the
+cross-domain deployed setup) while `COOKIE_SECURE` defaults to `false` — and browsers **silently
+discard** a `SameSite=None` cookie that isn't also `Secure`. The failure mode is unusually nasty:
+`POST /api/auth/login` returned 200 with a valid `Set-Cookie`, the browser stored nothing, and
+every subsequent request read as logged-out, so the login form simply appeared to do nothing.
+Confirmed directly — a diagnostic Playwright run showed `cookies: []` after a 200 login, and
+re-running with `COOKIE_SECURE=true` stored the cookie correctly.
+
+**Fix**: `cookie_samesite` is now a config setting (default `lax`, correct for same-site setups
+including local dev), `auth.py` reads it instead of hard-coding, `app/main.py` logs a loud startup
+error if `samesite=none` is paired with `secure=false`, and `.env.example`/README document the
+cross-domain combination. Regression test:
+`test_session_cookie_defaults_to_a_combination_browsers_actually_accept`. **Deployment note for
+the split-domain setup: set `COOKIE_SAMESITE=none` *and* `COOKIE_SECURE=true` together.**
+
+**2. Unbounded exception panel buried the vessel timeline.** The first capture of `54` showed
+**19** stacked alerts (later 38) for one vessel, pushing the movement timeline — the reason the
+page exists — off the screen. Detection was correct (the simulated feed loops a full voyage every
+few ticks, so each alert was a genuinely distinct late arrival), but the *presentation* was
+unbounded, and in production a long-serving vessel accumulates one exception per late voyage
+forever. **Fix**: the history endpoint returns the 5 most recent plus a true `exception_count`,
+the UI renders "Showing the 5 most recent of 38 · See all exceptions", and
+`GET /api/insights/exceptions` grew a `limit` (default 200), matching how the notification log is
+already capped. Re-captured `54` confirms it. Tests:
+`test_history_caps_the_exception_panel_but_reports_the_true_total`,
+`test_exceptions_list_respects_its_limit`.
+
+**3. Predicted ETA rendered as a misleading "median of 0h".** The backend rounded the transit
+duration to one decimal place in hours; the simulated feed completes a voyage within a single
+poll tick, so every prediction collapsed to `0.0` and read as instant travel. **Fix**: 4-decimal
+precision server-side, and the frontend picks a sensible unit (seconds/minutes/hours) — now reads
+"a median of 1 seconds" on demo data, which is at least accurate.
+
+---
+
+## Conflict checks — Phase 6 against Phases 1-5 / Auth
+
+- **`StatusEvent.eta` is additive and optional**: `RawReport.eta` defaults to `None`, so the
+  Phase 5 booking pipeline and every pre-existing adapter/test construct reports unchanged. All
+  prior tracking/status/archive tests pass untouched.
+- **Notification dispatch was refactored, not duplicated**: adding a third channel to three call
+  sites would have triplicated the enabled-channel logic, so `dispatch_to_enabled_channels()` now
+  owns it and `notify_vessel_event`/`notify_exception`/`send_test_notification` share it. All
+  Phase 4 notification tests pass unchanged, confirming behaviour is identical for the two
+  original channels.
+- **`timeutil.py` extraction**: `archive_worker.py`'s private `_as_naive_utc` moved to a shared
+  module and is imported back under the same name — Section 3.7's retention sweep is behaviourally
+  untouched (`test_archive_worker.py`, `test_archive.py` pass unchanged).
+- **Exception sweep can't break tracking**: it runs after the poll's own commit, wrapped in its
+  own try/except (mirroring how Phase 4's notifications were wired), so a detector fault leaves
+  already-persisted vessel data intact.
+- **Phase 5 untouched**: no Container/Booking code was modified; `59` confirms the module still
+  renders and polls correctly.
+- **Phase 1-5 regression sweep**: `57` (dashboard), `58` (Map View), `59` (Containers), `60`
+  (Reports), `61` (Settings → Users), `62` (Settings → Tracking Sources) all render correctly
+  after the Phase 6 changes, with no console errors beyond the expected pre-login 401.
+
+## Known gaps
+
+Route-deviation alerts and ETA-change notifications are documented non-goals (see above), not
+oversights. Only Microsoft is implemented as a social/SSO sign-in option — no other providers
+were requested. The app still has **no migration tool**; every phase has required a dev database
+reset, which is fine for demo data and must be addressed with Alembic before real data depends
+on it.

@@ -10,7 +10,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from app.models import AuthProvider, BookingStatus, EventType, NotificationChannel, NotificationStatus, UserRole
+from app.models import (
+    AuthProvider,
+    BookingStatus,
+    EventType,
+    ExceptionKind,
+    NotificationChannel,
+    NotificationStatus,
+    UserRole,
+)
 
 
 def validate_imo(value: str) -> str:
@@ -57,6 +65,8 @@ class StatusEventOut(BaseModel):
     source_name: str
     occurred_at: datetime
     recorded_at: datetime
+    # The ETA the source reported at this event (Section 3.3); None when it didn't report one.
+    eta: datetime | None = None
 
     # Lets Pydantic build this directly from a StatusEvent ORM object's attributes, instead of
     # requiring a dict.
@@ -85,12 +95,67 @@ class VesselOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PredictedEtaOut(BaseModel):
+    """Phase 6's predictive ETA (Section 7), with the evidence behind it so the UI can show
+    *why* rather than presenting a bare timestamp - see services/predictive_eta.py."""
+
+    predicted_arrival: datetime
+    # How many of this vessel's own completed voyages on this route the estimate averages over.
+    sample_size: int
+    typical_duration_hours: float
+    departed_from: str
+    departed_at: datetime
+
+
 class VesselHistoryOut(BaseModel):
     """Response for GET /api/vessels/{imo}/history (Section 3.5) - the vessel plus its full
-    timeline, oldest first."""
+    timeline, oldest first, plus the Phase 6 additions shown alongside it."""
 
     vessel: VesselOut
     timeline: list[StatusEventOut]
+    # None when there's no basis for a prediction (no destination, not underway, or no
+    # completed prior voyage on this route) - the UI omits the panel rather than guessing.
+    predicted_eta: PredictedEtaOut | None = None
+    # The most recent exceptions for this vessel, newest first - deliberately a slice, not the
+    # full set. A long-serving vessel accumulates one exception per late voyage indefinitely,
+    # and rendering all of them buries the timeline the page exists to show.
+    exceptions: list["VesselExceptionOut"] = []
+    # Total recorded for this vessel, so the UI can say "showing the most recent N of M" rather
+    # than silently truncating.
+    exception_count: int = 0
+
+
+class VesselExceptionOut(BaseModel):
+    """One detected exception (Section 7's "AI Exception Alerts"), for the Exceptions page and
+    the vessel history panel. `vessel_name`/`vessel_imo` are flattened in so the standalone
+    Exceptions list doesn't need a second lookup per row."""
+
+    id: int
+    vessel_name: str
+    vessel_imo: str
+    kind: ExceptionKind
+    message: str
+    detected_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class VoyageSummaryOut(BaseModel):
+    """A cached AI voyage summary (Section 7) plus enough metadata for the UI to say how current
+    it is - `is_stale` is true once new tracking events have landed since it was written."""
+
+    summary: str
+    generated_at: datetime
+    source_event_count: int
+    is_stale: bool
+
+
+class AiStatusOut(BaseModel):
+    """Whether AI voyage summaries are usable on this deployment, so the frontend can hide the
+    button rather than offering one that always fails (same posture as the Microsoft sign-in
+    status endpoint)."""
+
+    configured: bool
 
 
 class BulkUploadRow(BaseModel):
@@ -324,6 +389,13 @@ class NotificationSettingsOut(BaseModel):
     teams_enabled: bool
     teams_webhook_url: str | None
 
+    # Like smtp_password, the access token never round-trips back to the browser - only
+    # whether one is stored (see `whatsapp_access_token_set`).
+    whatsapp_enabled: bool
+    whatsapp_phone_number_id: str | None
+    whatsapp_access_token_set: bool
+    whatsapp_recipients: str | None
+
     daily_report_enabled: bool
     daily_report_hour_utc: int
     daily_report_last_sent_date: str | None
@@ -345,6 +417,12 @@ class NotificationSettingsUpdate(BaseModel):
 
     teams_enabled: bool | None = None
     teams_webhook_url: str | None = None
+
+    # `whatsapp_access_token` follows the same only-updated-when-provided rule as smtp_password.
+    whatsapp_enabled: bool | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_recipients: str | None = None
 
     daily_report_enabled: bool | None = None
     daily_report_hour_utc: int | None = Field(default=None, ge=0, le=23)
