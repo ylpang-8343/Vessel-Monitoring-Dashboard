@@ -25,9 +25,13 @@ function dotIcon(colourClass: string) {
   });
 }
 
+// Destination ports use the palette's dark neutral, not the brand orange: three of the Section
+// 6.E vessel-status colours are already oranges/ambers, and an orange port marker was
+// indistinguishable from "At Port" and "ETA to Destination" in the legend. Fixed infrastructure
+// reading as neutral against coloured vessel states is the more useful distinction anyway.
 const DESTINATION_ICON = L.divIcon({
   className: "",
-  html: `<span class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[#0b3d5c] text-[10px] text-white shadow">⚓</span>`,
+  html: `<span class="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[#3f3e42] text-[10px] text-white shadow">⚓</span>`,
   iconSize: [20, 20],
   iconAnchor: [10, 10],
 });
@@ -60,7 +64,7 @@ export default function VesselMap({ vessels }: { vessels: Vessel[] }) {
 
   return (
     <div>
-      <div className="h-[520px] w-full overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <div className="h-[520px] w-full overflow-hidden border border-rule-strong">
         <MapContainer
           center={DEFAULT_CENTER}
           zoom={DEFAULT_ZOOM}
@@ -100,8 +104,8 @@ export default function VesselMap({ vessels }: { vessels: Vessel[] }) {
         </MapContainer>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-zinc-600 dark:text-zinc-400">
-        <LegendItem colourClass="bg-[#0b3d5c]" label="Destination port" />
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-body">
+        <LegendItem colourClass="bg-ink" label="Destination port" />
         <LegendItem colourClass="bg-blue-500" label="Sailing" />
         <LegendItem colourClass="bg-orange-500" label="At Port" />
         <LegendItem colourClass="bg-amber-500" label="ETA to Destination" />
@@ -110,8 +114,8 @@ export default function VesselMap({ vessels }: { vessels: Vessel[] }) {
       </div>
 
       {unplottable.length > 0 && (
-        <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-          <p className="mb-1 font-medium text-zinc-700 dark:text-zinc-300">
+        <div className="mt-4 border border-rule border-l-[3px] border-l-brand bg-brand-tint px-4 py-3 text-xs text-body">
+          <p className="mb-1 font-bold text-ink">
             Not shown on map ({unplottable.length}) — location not yet mapped to coordinates:
           </p>
           <ul className="space-y-0.5">

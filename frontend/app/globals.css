@@ -1,26 +1,55 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Dark mode is switched from the default `prefers-color-scheme` to an explicit `.dark` class
+   that is never applied anywhere. The Mewah house style is a single light corporate palette
+   (white surfaces, orange accents, grey text) - an auto-inverting second theme would drift from
+   it the moment a visitor's OS is set to dark. Keeping the variant defined rather than deleting
+   it means any leftover `dark:` utility is simply inert instead of a build error. */
+@custom-variant dark (&:where(.dark, .dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@theme {
+  /* Brand palette, taken from mewahgroup.com: #f7941e is the colour of the logo wordmark and
+     the main navigation bar; the site's own stylesheet uses #fa931d for nav hover states. */
+  --color-brand: #f7941e;
+  --color-brand-dark: #e07d0c;
+  --color-brand-darker: #c56a05;
+  --color-brand-tint: #fef6ec;
+  --color-brand-line: #f6cf9f;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Text. --color-body is #656469 straight from the source site's `.style2` rule; `ink` is a
+     darker step for headings, `muted` a lighter one for captions and secondary detail. */
+  --color-ink: #3f3e42;
+  --color-body: #656469;
+  --color-muted: #8b8a8f;
+
+  /* Hairlines. The source site rules its content tables with `Silver 1px solid`, which is the
+     look `rule-strong` reproduces; `rule` is the softer everyday divider. */
+  --color-rule: #dcdcdf;
+  --color-rule-strong: #c0c0c0;
+
+  /* Page background behind the white content panels. */
+  --color-canvas: #f1f1f2;
+
+  /* Arial/Verdana, matching the source site's own font stack rather than a webfont. */
+  --font-sans: Arial, Verdana, Helvetica, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-body);
+  font-family: var(--font-sans);
+}
+
+/* Headings inherit the darker ink step by default so individual components don't each have to
+   remember to set it.
+
+   This MUST stay inside `@layer base`: unlayered CSS beats every layered rule in the cascade, so
+   a bare `h1 { color }` here would override `text-white` on the orange page banner and render its
+   title in grey. */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    color: var(--color-ink);
+  }
 }

@@ -98,7 +98,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       {ready ? (
         children
       ) : (
-        <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">Loading…</div>
+        <div className="flex flex-1 items-center justify-center text-sm text-muted">Loading…</div>
       )}
     </AuthContext.Provider>
   );

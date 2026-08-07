@@ -9,6 +9,7 @@ import {
   previewBulkUpload,
 } from "@/lib/api";
 import { COMMON_DESTINATION_PORTS } from "@/lib/constants";
+import { TabButton, btnPrimary, btnSecondary, inputClass, labelClass, theadClass } from "./ui";
 
 type Tab = "single" | "bulk";
 
@@ -25,16 +26,16 @@ export default function AddVesselModal({
   const [tab, setTab] = useState<Tab>("single");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-2xl rounded-lg bg-white shadow-xl dark:bg-zinc-900">
-        <div className="flex items-center justify-between rounded-t-lg bg-[#0b3d5c] px-6 py-4">
-          <h2 className="text-lg font-semibold text-white">Add Vessel</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+      <div className="w-full max-w-2xl border border-rule bg-white shadow-2xl">
+        <div className="flex items-center justify-between bg-brand px-5 py-3.5">
+          <h2 className="text-base font-bold uppercase tracking-wide text-white">Add Vessel</h2>
           <button onClick={onClose} className="text-white/80 hover:text-white" aria-label="Close">
             ✕
           </button>
         </div>
 
-        <div className="flex gap-2 border-b border-zinc-200 px-6 pt-4 dark:border-zinc-800">
+        <div className="flex border-b border-rule px-5 pt-1">
           <TabButton active={tab === "single"} onClick={() => setTab("single")}>
             Single Vessel
           </TabButton>
@@ -43,7 +44,7 @@ export default function AddVesselModal({
           </TabButton>
         </div>
 
-        <div className="px-6 py-5">
+        <div className="px-5 py-5">
           {tab === "single" ? (
             <SingleVesselForm onClose={onClose} onImported={onImported} />
           ) : (
@@ -52,29 +53,6 @@ export default function AddVesselModal({
         </div>
       </div>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-t-md px-4 py-2 text-sm font-medium ${
-        active
-          ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
-          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -111,18 +89,18 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Vessel Name</label>
+        <label className={labelClass}>Vessel Name</label>
         <input
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. MV ABC"
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} mt-1 w-full`}
         />
       </div>
 
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">IMO Number</label>
+        <label className={labelClass}>IMO Number</label>
         <input
           required
           value={imo}
@@ -130,14 +108,12 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
           // even contain an invalid IMO - the backend still re-validates on submit regardless.
           onChange={(e) => setImo(e.target.value.replace(/[^0-9]/g, "").slice(0, 7))}
           placeholder="7-digit number"
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} mt-1 w-full`}
         />
       </div>
 
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-          Destination Port (optional)
-        </label>
+        <label className={labelClass}>Destination Port (optional)</label>
         {!customDestination ? (
           <select
             value={destination}
@@ -149,7 +125,7 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
                 setDestination(e.target.value);
               }
             }}
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className={`${inputClass} mt-1 w-full`}
           >
             <option value="">— Not set —</option>
             {COMMON_DESTINATION_PORTS.map((port) => (
@@ -164,10 +140,10 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
             placeholder="Enter destination port"
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className={`${inputClass} mt-1 w-full`}
           />
         )}
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1.5 text-xs text-muted">
           Duplicate IMO numbers are automatically rejected. If no destination is set, the vessel stays on the
           dashboard indefinitely and is never auto-archived.
         </p>
@@ -176,18 +152,10 @@ function SingleVesselForm({ onClose, onImported }: { onClose: () => void; onImpo
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="flex justify-end gap-3 pt-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium dark:border-zinc-700"
-        >
+        <button type="button" onClick={onClose} className={btnSecondary}>
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642] disabled:opacity-50"
-        >
+        <button type="submit" disabled={submitting} className={btnPrimary}>
           {submitting ? "Adding…" : "Add Vessel"}
         </button>
       </div>
@@ -273,10 +241,12 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
 
   return (
     <div className="space-y-4">
-      <label className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-zinc-300 px-4 py-8 text-center hover:border-zinc-400 dark:border-zinc-700">
-        <span className="font-medium">Drag &amp; drop your .xlsx, .csv, or .pdf file here</span>
-        <span className="text-xs text-zinc-500">PDF lists are read with AI extraction, then shown below to check before import</span>
-        <span className="mt-2 rounded-md bg-[#0b3d5c] px-4 py-2 text-sm font-medium text-white">Choose File</span>
+      <label className="flex cursor-pointer flex-col items-center gap-2 border-2 border-dashed border-rule-strong px-4 py-8 text-center transition-colors hover:border-brand hover:bg-brand-tint">
+        <span className="font-bold text-ink">Drag &amp; drop your .xlsx, .csv, or .pdf file here</span>
+        <span className="text-xs text-muted">
+          PDF lists are read with AI extraction, then shown below to check before import
+        </span>
+        <span className="mt-2 rounded-sm bg-brand px-4 py-2 text-sm font-bold text-white">Choose File</span>
         <input
           type="file"
           accept=".xlsx,.xls,.csv,.pdf"
@@ -288,15 +258,15 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
         />
       </label>
 
-      {fileName && <p className="text-xs text-zinc-500">Selected: {fileName}</p>}
-      {loading && <p className="text-sm text-zinc-500">Reading file…</p>}
+      {fileName && <p className="text-xs text-muted">Selected: {fileName}</p>}
+      {loading && <p className="text-sm text-muted">Reading file…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {rows.length > 0 && (
         <div className="space-y-3">
-          <div className="max-h-64 overflow-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+          <div className="max-h-64 overflow-auto border border-rule">
             <table className="w-full text-sm">
-              <thead className="bg-zinc-50 text-left text-xs uppercase text-zinc-500 dark:bg-zinc-800">
+              <thead className={theadClass}>
                 <tr>
                   <th className="px-3 py-2">Vessel Name</th>
                   <th className="px-3 py-2">IMO Number</th>
@@ -306,19 +276,19 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={i} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <tr key={i} className="border-b border-rule last:border-b-0">
                     <td className="px-3 py-1.5">
                       <input
                         value={row.name ?? ""}
                         onChange={(e) => updateRow(i, { name: e.target.value })}
-                        className="w-full rounded border border-zinc-200 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                        className="w-full rounded-sm border border-rule px-2 py-1 focus:border-brand focus:outline-none"
                       />
                     </td>
                     <td className="px-3 py-1.5">
                       <input
                         value={row.imo_number ?? ""}
                         onChange={(e) => updateRow(i, { imo_number: e.target.value })}
-                        className="w-full rounded border border-zinc-200 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                        className="w-full rounded-sm border border-rule px-2 py-1 focus:border-brand focus:outline-none"
                       />
                     </td>
                     <td className="px-3 py-1.5">
@@ -326,7 +296,7 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
                         value={row.destination_port ?? ""}
                         onChange={(e) => updateRow(i, { destination_port: e.target.value })}
                         placeholder="— (not set)"
-                        className="w-full rounded border border-zinc-200 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                        className="w-full rounded-sm border border-rule px-2 py-1 focus:border-brand focus:outline-none"
                       />
                     </td>
                     <td className="px-3 py-1.5">
@@ -339,18 +309,14 @@ function BulkUploadForm({ onClose, onImported }: { onClose: () => void; onImport
           </div>
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium dark:border-zinc-700"
-            >
+            <button type="button" onClick={onClose} className={btnSecondary}>
               Cancel
             </button>
             <button
               type="button"
               onClick={handleImport}
               disabled={importing || importableCount === 0}
-              className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642] disabled:opacity-50"
+              className={btnPrimary}
             >
               {importing
                 ? "Importing…"
@@ -371,7 +337,7 @@ function StatusBadge({ status, message }: { status: BulkUploadRow["status"]; mes
   };
   const label = status === "ok" ? "Ready" : status === "duplicate" ? "Duplicate" : "Needs fix";
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${styles[status]}`} title={message ?? ""}>
+    <span className={`inline-block rounded-sm px-2 py-0.5 text-xs font-bold ${styles[status]}`} title={message ?? ""}>
       {label}
     </span>
   );

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   ApiError,
   createTrackingSource,
@@ -21,7 +20,24 @@ import {
   User,
 } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
-import UserMenu from "@/app/components/UserMenu";
+import {
+  EmptyState,
+  ErrorBar,
+  NoticeBar,
+  PageBanner,
+  Panel,
+  PanelHeader,
+  Shell,
+  TabButton,
+  btnDangerSm,
+  btnPrimary,
+  btnPrimarySm,
+  btnSecondary,
+  btnSecondarySm,
+  inputClass,
+  labelClass,
+  theadClass,
+} from "@/app/components/ui";
 
 type SettingsTab = "sources" | "users" | "notifications";
 
@@ -31,63 +47,30 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<SettingsTab>("sources");
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">Settings</h1>
-            <p className="text-xs text-white/70">Admin-only · Tracking sources, user roles, and notifications</p>
+    <>
+      <PageBanner
+        title="Settings"
+        subtitle="Admin only · Tracking sources, user roles and notifications"
+      />
+
+      <Shell className="py-7">
+        <Panel>
+          <div className="flex flex-wrap border-b border-rule px-5 pt-1">
+            <TabButton active={tab === "sources"} onClick={() => setTab("sources")}>
+              Tracking Sources
+            </TabButton>
+            <TabButton active={tab === "users"} onClick={() => setTab("users")}>
+              Users
+            </TabButton>
+            <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
+              Notifications
+            </TabButton>
           </div>
-          <div className="flex items-center gap-3">
-            <UserMenu />
-            <Link
-              href="/"
-              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
 
-        <div className="flex gap-2 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <SettingsTabButton active={tab === "sources"} onClick={() => setTab("sources")}>
-            Tracking Sources
-          </SettingsTabButton>
-          <SettingsTabButton active={tab === "users"} onClick={() => setTab("users")}>
-            Users
-          </SettingsTabButton>
-          <SettingsTabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
-            Notifications
-          </SettingsTabButton>
-        </div>
-
-        {tab === "sources" ? <TrackingSourcesTab /> : tab === "users" ? <UsersTab /> : <NotificationsTab />}
-      </div>
-    </div>
-  );
-}
-
-// "Tracking Sources" / "Users" tab button.
-function SettingsTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-t-md px-4 py-2 text-sm font-medium ${
-        active
-          ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
-          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-      }`}
-    >
-      {children}
-    </button>
+          {tab === "sources" ? <TrackingSourcesTab /> : tab === "users" ? <UsersTab /> : <NotificationsTab />}
+        </Panel>
+      </Shell>
+    </>
   );
 }
 
@@ -129,41 +112,39 @@ function TrackingSourcesTab() {
 
   return (
     <>
-      <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-        Only the Mock Tracking Feed (vessels) and Mock Booking Feed (containers, Section 4) are actually polled
-        right now — MarineTraffic, VesselFinder, Polestar GMDA, and the five carrier booking portals (ONE,
-        Maersk, MSC, CMA CGM, InterAsia) have no free public API and no credentials are configured yet, so
-        they&apos;re catalogued here but marked &quot;Not yet connected&quot;. Toggling either mock source on/off
-        pauses or resumes its simulated updates.
-      </div>
+      <NoticeBar>
+        Only the Mock Tracking Feed (vessels) and Mock Booking Feed (containers, Section 4) are actually
+        polled right now — MarineTraffic, VesselFinder, Polestar GMDA, and the five carrier booking portals
+        (ONE, Maersk, MSC, CMA CGM, InterAsia) have no free public API and no credentials are configured
+        yet, so they&apos;re catalogued here but marked &quot;Not yet connected&quot;. Toggling either mock
+        source on/off pauses or resumes its simulated updates.
+      </NoticeBar>
 
-      <div className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-b border-rule px-5 py-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search sources by name or URL…"
-          className="w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} w-72`}
         />
       </div>
 
-      {error && (
-        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
-      )}
+      {error && <ErrorBar>{error}</ErrorBar>}
 
-      <div className="bg-white dark:bg-zinc-900">
-        {loading ? (
-          <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>
-        ) : filteredSources.length === 0 ? (
-          <div className="px-6 py-16 text-center text-sm text-zinc-500">No sources match &quot;{search}&quot;.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+      {loading ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : filteredSources.length === 0 ? (
+        <EmptyState>No sources match &quot;{search}&quot;.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[880px] text-sm">
+            <thead className={theadClass}>
               <tr>
-                <th className="px-6 py-3">Name</th>
-                <th className="px-6 py-3">URL</th>
-                <th className="px-6 py-3">Kind</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3" />
+                <th className="px-5 py-3">Name</th>
+                <th className="px-5 py-3">URL</th>
+                <th className="px-5 py-3">Kind</th>
+                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -172,10 +153,10 @@ function TrackingSourcesTab() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-t border-rule bg-[#faf9f8] px-5 py-4">
         {showAddForm ? (
           <AddSourceForm
             onCancel={() => setShowAddForm(false)}
@@ -185,10 +166,7 @@ function TrackingSourcesTab() {
             }}
           />
         ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
-          >
+          <button onClick={() => setShowAddForm(true)} className={btnPrimary}>
             + Add Source
           </button>
         )}
@@ -236,38 +214,36 @@ function UsersTab() {
 
   return (
     <>
-      <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-        Registering never grants admin — the first admin is created via the <code>promote-admin</code> terminal
-        command. From here, existing admins can promote or demote anyone else; the last remaining admin can&apos;t
-        be demoted, or no one would be able to manage roles anymore.
-      </div>
+      <NoticeBar>
+        Registering never grants admin — the first admin is created via the <code>promote-admin</code>{" "}
+        terminal command. From here, existing admins can promote or demote anyone else; the last remaining
+        admin can&apos;t be demoted, or no one would be able to manage roles anymore.
+      </NoticeBar>
 
-      <div className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="border-b border-rule px-5 py-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search users by email…"
-          className="w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} w-72`}
         />
       </div>
 
-      {error && (
-        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
-      )}
+      {error && <ErrorBar>{error}</ErrorBar>}
 
-      <div className="bg-white dark:bg-zinc-900">
-        {loading ? (
-          <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>
-        ) : filteredUsers.length === 0 ? (
-          <div className="px-6 py-16 text-center text-sm text-zinc-500">No users match &quot;{search}&quot;.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
+      {loading ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : filteredUsers.length === 0 ? (
+        <EmptyState>No users match &quot;{search}&quot;.</EmptyState>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead className={theadClass}>
               <tr>
-                <th className="px-6 py-3">Email</th>
-                <th className="px-6 py-3">Role</th>
-                <th className="px-6 py-3">Registered</th>
-                <th className="px-6 py-3" />
+                <th className="px-5 py-3">Email</th>
+                <th className="px-5 py-3">Role</th>
+                <th className="px-5 py-3">Registered</th>
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -282,8 +258,8 @@ function UsersTab() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }
@@ -330,38 +306,37 @@ function UserRow({
   }
 
   return (
-    <tr className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800">
-      <td className="px-6 py-3 font-medium">
+    <tr className="border-b border-rule last:border-b-0">
+      <td className="px-5 py-3 font-bold text-ink">
         {user.email}
-        {isSelf && <span className="ml-2 text-xs font-normal text-zinc-400">(you)</span>}
+        {isSelf && <span className="ml-2 text-xs font-normal text-muted">(you)</span>}
         {user.microsoft_linked && (
           <span
-            className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-normal text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+            className="ml-2 rounded-sm bg-[#f1f1f2] px-1.5 py-0.5 text-xs font-normal text-muted"
             title="Can sign in via Microsoft"
           >
             Microsoft
           </span>
         )}
       </td>
-      <td className="px-6 py-3">
+      <td className="px-5 py-3">
+        {/* Admin is marked in the brand orange - the one role that unlocks this very page. */}
         <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${
-            user.role === "admin"
-              ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+          className={`rounded-sm px-2 py-0.5 text-xs font-bold uppercase ${
+            user.role === "admin" ? "bg-brand-tint text-brand-darker" : "bg-[#f1f1f2] text-muted"
           }`}
         >
           {user.role}
         </span>
       </td>
-      <td className="px-6 py-3 text-zinc-500">{new Date(user.created_at).toLocaleDateString()}</td>
-      <td className="px-6 py-3">
+      <td className="px-5 py-3 text-muted">{new Date(user.created_at).toLocaleDateString()}</td>
+      <td className="px-5 py-3">
         <div className="flex flex-col items-start gap-1">
           <button
             onClick={toggleRole}
             disabled={busy || (user.role === "admin" && isLastAdmin)}
             title={user.role === "admin" && isLastAdmin ? "Cannot demote the last remaining admin" : undefined}
-            className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            className={btnSecondarySm}
           >
             {user.role === "admin" ? "Demote to user" : "Promote to admin"}
           </button>
@@ -429,70 +404,60 @@ function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: (
   }
 
   return (
-    <tr className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800">
-      <td className="px-6 py-3">
+    <tr className="border-b border-rule last:border-b-0">
+      <td className="px-5 py-3">
         {editing ? (
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800"
-          />
+          <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputClass} w-full`} />
         ) : (
-          <span className="font-medium">{source.name}</span>
+          <span className="font-bold text-ink">{source.name}</span>
         )}
       </td>
-      <td className="max-w-xs truncate px-6 py-3 text-zinc-500" title={source.url}>
+      <td className="max-w-xs truncate px-5 py-3 text-muted" title={source.url}>
         {editing ? (
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800"
-          />
+          <input value={url} onChange={(e) => setUrl(e.target.value)} className={`${inputClass} w-full`} />
         ) : (
           source.url
         )}
       </td>
-      <td className="px-6 py-3 text-zinc-500">{source.kind}</td>
-      <td className="px-6 py-3">
+      <td className="px-5 py-3 capitalize text-muted">{source.kind}</td>
+      <td className="px-5 py-3">
         <div className="flex flex-col gap-1">
           <label className="flex items-center gap-2">
-            <input type="checkbox" checked={source.enabled} disabled={busy} onChange={toggleEnabled} />
+            <input
+              type="checkbox"
+              checked={source.enabled}
+              disabled={busy}
+              onChange={toggleEnabled}
+              className="accent-[#f7941e]"
+            />
             <span>{source.enabled ? "Enabled" : "Disabled"}</span>
           </label>
           {!isConnected && (
-            <span className="w-fit rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800">
+            <span className="w-fit rounded-sm bg-[#f1f1f2] px-2 py-0.5 text-xs text-muted">
               Not yet connected
             </span>
           )}
           {rowError && <span className="text-xs text-red-600">{rowError}</span>}
         </div>
       </td>
-      <td className="px-6 py-3">
+      <td className="px-5 py-3">
         {confirmingDelete ? (
           <div className="flex items-center gap-2 whitespace-nowrap">
             <span className="text-xs">Delete?</span>
             <button
               onClick={handleDelete}
               disabled={busy}
-              className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex items-center rounded-sm bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
             >
               Yes
             </button>
-            <button
-              onClick={() => setConfirmingDelete(false)}
-              disabled={busy}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium dark:border-zinc-700"
-            >
+            <button onClick={() => setConfirmingDelete(false)} disabled={busy} className={btnSecondarySm}>
               No
             </button>
           </div>
         ) : editing ? (
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <button
-              onClick={saveEdits}
-              disabled={busy}
-              className="rounded bg-[#0b3d5c] px-2 py-1 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
-            >
+            <button onClick={saveEdits} disabled={busy} className={btnPrimarySm}>
               Save
             </button>
             <button
@@ -502,23 +467,17 @@ function SourceRow({ source, onChanged }: { source: TrackingSource; onChanged: (
                 setUrl(source.url);
               }}
               disabled={busy}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium dark:border-zinc-700"
+              className={btnSecondarySm}
             >
               Cancel
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <button
-              onClick={() => setEditing(true)}
-              className="rounded border border-zinc-300 px-2 py-1 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-            >
+            <button onClick={() => setEditing(true)} className={btnSecondarySm}>
               Edit
             </button>
-            <button
-              onClick={() => setConfirmingDelete(true)}
-              className="rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-            >
+            <button onClick={() => setConfirmingDelete(true)} className={btnDangerSm}>
               Remove
             </button>
           </div>
@@ -558,50 +517,42 @@ function AddSourceForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
   return (
     <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-3">
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Name</label>
+        <label className={labelClass}>Name</label>
         <input
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Shipping Line Tracker"
-          className="mt-1 w-56 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} mt-1 w-56`}
         />
       </div>
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">URL</label>
+        <label className={labelClass}>URL</label>
         <input
           required
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://…"
-          className="mt-1 w-64 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} mt-1 w-64`}
         />
       </div>
       <div>
-        <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Kind</label>
+        <label className={labelClass}>Kind</label>
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value)}
-          className="mt-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          className={`${inputClass} mt-1 w-40`}
         >
           <option value="vessel">Vessel</option>
           <option value="container">Container</option>
         </select>
       </div>
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium dark:border-zinc-700"
-        >
+        <button type="button" onClick={onCancel} className={btnSecondary}>
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642] disabled:opacity-50"
-        >
+        <button type="submit" disabled={submitting} className={btnPrimary}>
           {submitting ? "Adding…" : "Add Source"}
         </button>
       </div>
@@ -610,8 +561,8 @@ function AddSourceForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
   );
 }
 
-// Settings → Notifications tab (Section 6.C event alerts + Phase 4's daily report). Three
-// independent cards - Email, Microsoft Teams, Daily Report - each save separately via a partial
+// Settings → Notifications tab (Section 6.C event alerts + Phase 4's daily report). Four
+// independent cards - Email, Teams, WhatsApp, Daily Report - each save separately via a partial
 // PATCH, plus a "recent activity" log so an admin can verify a channel is actually working.
 function NotificationsTab() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
@@ -647,7 +598,7 @@ function NotificationsTab() {
       const entries = await testNotifications();
       setTestResult(
         entries.length === 0
-          ? "No channels are enabled - turn on Email or Teams below first."
+          ? "No channels are enabled - turn on Email, Teams or WhatsApp below first."
           : entries.map((e) => `${e.channel}: ${e.status}`).join(", "),
       );
       await refresh();
@@ -665,7 +616,7 @@ function NotificationsTab() {
       const entries = await sendDailyReportNow();
       setTestResult(
         entries.length === 0
-          ? "No channels are enabled - turn on Email or Teams below first."
+          ? "No channels are enabled - turn on Email, Teams or WhatsApp below first."
           : `Daily report sent: ${entries.map((e) => `${e.channel}: ${e.status}`).join(", ")}`,
       );
       await refresh();
@@ -677,97 +628,144 @@ function NotificationsTab() {
   }
 
   if (loading || !settings) {
-    return <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading…</div>;
+    return <EmptyState>Loading…</EmptyState>;
   }
 
   return (
     <>
-      <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <NoticeBar>
         Triggered on vessel arrival, departure, arrival at destination (Section 6.C), and on detected
         exceptions — delays, unusually long port stays, and unexpected port calls (Section 7). Delay alerts
         became possible in Phase 6, when tracking sources started reporting an ETA to measure against;
-        ETA-<em>change</em> alerts are still excluded, since they&apos;d fire on every routine source revision.
-        Every attempt is logged below, including when a channel is enabled but not fully configured.
-      </div>
+        {/* Explicit {" "} - the plain space after </em> is swallowed by JSX whitespace handling
+            here, rendering as "ETA-changealerts". */}
+        ETA-<em>change</em>{" "}
+        alerts are still excluded, since they&apos;d fire on every routine source
+        revision. Every attempt is logged below, including when a channel is enabled but not fully
+        configured.
+      </NoticeBar>
 
-      {error && <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>}
+      {error && <ErrorBar>{error}</ErrorBar>}
 
-      <div className="grid grid-cols-1 gap-4 bg-white px-6 py-4 md:grid-cols-2 dark:bg-zinc-900">
+      {/* `items-start` stops each card being stretched to its row-mate's height - Teams and Daily
+          Report have one field each and would otherwise sit in a box as tall as the six-field
+          Email card, mostly empty. */}
+      <div className="grid grid-cols-1 items-start gap-4 px-5 py-5 md:grid-cols-2">
         <EmailSettingsCard settings={settings} onSaved={refresh} />
         <TeamsSettingsCard settings={settings} onSaved={refresh} />
         <WhatsAppSettingsCard settings={settings} onSaved={refresh} />
-      </div>
-
-      <div className="bg-white px-6 pb-4 dark:bg-zinc-900">
         <DailyReportCard settings={settings} onSaved={refresh} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <button
-          onClick={handleTest}
-          disabled={testing}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-        >
+      <div className="flex flex-wrap items-center gap-3 border-t border-rule bg-[#faf9f8] px-5 py-4">
+        <button onClick={handleTest} disabled={testing} className={btnSecondary}>
           {testing ? "Sending…" : "Send Test Notification"}
         </button>
-        <button
-          onClick={handleSendDailyReportNow}
-          disabled={testing}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-        >
+        <button onClick={handleSendDailyReportNow} disabled={testing} className={btnSecondary}>
           {testing ? "Sending…" : "Send Daily Report Now"}
         </button>
-        {testResult && <span className="text-sm text-zinc-600 dark:text-zinc-400">{testResult}</span>}
+        {testResult && <span className="text-sm text-body">{testResult}</span>}
       </div>
 
-      <div className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="px-6 pt-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Recent Activity</h2>
+      <div className="border-t border-rule">
+        <PanelHeader title="Recent Activity" />
         {log.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-zinc-500">
-            No notifications sent yet - they&apos;ll show up here once a vessel event fires or you send a test.
-          </p>
+          <EmptyState>
+            No notifications sent yet — they&apos;ll show up here once a vessel event fires or you send a
+            test.
+          </EmptyState>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-              <tr>
-                <th className="px-6 py-3">When</th>
-                <th className="px-6 py-3">Channel</th>
-                <th className="px-6 py-3">Status</th>
-                <th className="px-6 py-3">Subject</th>
-                <th className="px-6 py-3">Vessel</th>
-                <th className="px-6 py-3">Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {log.map((entry) => (
-                <tr key={entry.id} className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800">
-                  <td className="px-6 py-3 text-zinc-500">{new Date(entry.created_at).toLocaleString()}</td>
-                  <td className="px-6 py-3 capitalize">{entry.channel}</td>
-                  <td className="px-6 py-3">
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
-                        entry.status === "sent"
-                          ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
-                          : entry.status === "skipped"
-                            ? "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                            : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
-                      }`}
-                    >
-                      {entry.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3">{entry.subject}</td>
-                  <td className="px-6 py-3 text-zinc-500">{entry.vessel_name ?? "—"}</td>
-                  <td className="max-w-xs truncate px-6 py-3 text-zinc-500" title={entry.detail ?? undefined}>
-                    {entry.detail ?? "—"}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className={theadClass}>
+                <tr>
+                  <th className="px-5 py-3">When</th>
+                  <th className="px-5 py-3">Channel</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3">Subject</th>
+                  <th className="px-5 py-3">Vessel</th>
+                  <th className="px-5 py-3">Detail</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {log.map((entry) => (
+                  <tr key={entry.id} className="border-b border-rule last:border-b-0">
+                    <td className="whitespace-nowrap px-5 py-3 text-muted">
+                      {new Date(entry.created_at).toLocaleString()}
+                    </td>
+                    <td className="px-5 py-3 capitalize">{entry.channel}</td>
+                    <td className="px-5 py-3">
+                      <span
+                        className={`rounded-sm px-2 py-0.5 text-xs font-bold ${
+                          entry.status === "sent"
+                            ? "bg-green-50 text-green-700"
+                            : entry.status === "skipped"
+                              ? "bg-[#f1f1f2] text-muted"
+                              : "bg-red-50 text-red-700"
+                        }`}
+                      >
+                        {entry.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">{entry.subject}</td>
+                    <td className="px-5 py-3 text-muted">{entry.vessel_name ?? "—"}</td>
+                    <td className="max-w-xs truncate px-5 py-3 text-muted" title={entry.detail ?? undefined}>
+                      {entry.detail ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </>
+  );
+}
+
+/** Shared frame for the four notification channel cards: the enable checkbox doubles as the card
+ * title, and the save button always sits at the bottom left. */
+function ChannelCard({
+  title,
+  enabled,
+  onEnabledChange,
+  children,
+  note,
+  error,
+  saving,
+  saveLabel,
+  onSave,
+}: {
+  title: string;
+  enabled: boolean;
+  onEnabledChange: (v: boolean) => void;
+  children: React.ReactNode;
+  note?: React.ReactNode;
+  error: string | null;
+  saving: boolean;
+  saveLabel: string;
+  onSave: () => void;
+}) {
+  return (
+    <div className="border border-rule bg-white">
+      <label className="flex items-center gap-2 border-b border-rule bg-[#faf9f8] px-4 py-2.5 text-sm font-bold uppercase tracking-wide text-ink">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onEnabledChange(e.target.checked)}
+          className="accent-[#f7941e]"
+        />
+        {title}
+      </label>
+      <div className="px-4 py-4">
+        {children}
+        {note && <div className="mt-2 text-xs leading-relaxed text-muted">{note}</div>}
+        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        <button onClick={onSave} disabled={saving} className={`${btnPrimarySm} mt-3`}>
+          {saving ? "Saving…" : saveLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -810,11 +808,15 @@ function EmailSettingsCard({ settings, onSaved }: { settings: NotificationSettin
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        Email
-      </label>
+    <ChannelCard
+      title="Email"
+      enabled={enabled}
+      onEnabledChange={setEnabled}
+      error={error}
+      saving={saving}
+      saveLabel="Save Email Settings"
+      onSave={handleSave}
+    >
       <div className="space-y-2">
         <FieldRow label="SMTP Host" value={host} onChange={setHost} placeholder="smtp.example.com" />
         <FieldRow label="SMTP Port" value={String(port)} onChange={(v) => setPort(Number(v) || 587)} />
@@ -826,7 +828,12 @@ function EmailSettingsCard({ settings, onSaved }: { settings: NotificationSettin
           type="password"
           placeholder={settings.smtp_password_set ? "•••••••• (unchanged)" : ""}
         />
-        <FieldRow label="From Address" value={fromAddress} onChange={setFromAddress} placeholder="alerts@example.com" />
+        <FieldRow
+          label="From Address"
+          value={fromAddress}
+          onChange={setFromAddress}
+          placeholder="alerts@example.com"
+        />
         <FieldRow
           label="Recipients"
           value={recipients}
@@ -834,15 +841,7 @@ function EmailSettingsCard({ settings, onSaved }: { settings: NotificationSettin
           placeholder="ops@example.com, second@example.com"
         />
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Save Email Settings"}
-      </button>
-    </div>
+    </ChannelCard>
   );
 }
 
@@ -867,28 +866,22 @@ function TeamsSettingsCard({ settings, onSaved }: { settings: NotificationSettin
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        Microsoft Teams
-      </label>
-      <div className="space-y-2">
-        <FieldRow
-          label="Webhook URL"
-          value={webhookUrl}
-          onChange={setWebhookUrl}
-          placeholder="https://…webhook.office.com/…"
-        />
-      </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Save Teams Settings"}
-      </button>
-    </div>
+    <ChannelCard
+      title="Microsoft Teams"
+      enabled={enabled}
+      onEnabledChange={setEnabled}
+      error={error}
+      saving={saving}
+      saveLabel="Save Teams Settings"
+      onSave={handleSave}
+    >
+      <FieldRow
+        label="Webhook URL"
+        value={webhookUrl}
+        onChange={setWebhookUrl}
+        placeholder="https://…webhook.office.com/…"
+      />
+    </ChannelCard>
   );
 }
 
@@ -925,11 +918,21 @@ function WhatsAppSettingsCard({ settings, onSaved }: { settings: NotificationSet
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        WhatsApp
-      </label>
+    <ChannelCard
+      title="WhatsApp"
+      enabled={enabled}
+      onEnabledChange={setEnabled}
+      error={error}
+      saving={saving}
+      saveLabel="Save WhatsApp Settings"
+      onSave={handleSave}
+      note={
+        <>
+          Uses Meta&apos;s WhatsApp Business Cloud API. One message is sent per recipient; if any recipient
+          fails, the whole attempt is logged as failed with the offending numbers.
+        </>
+      }
+    >
       <div className="space-y-2">
         <FieldRow label="Phone Number ID" value={phoneNumberId} onChange={setPhoneNumberId} placeholder="1234567890" />
         <FieldRow
@@ -946,19 +949,7 @@ function WhatsAppSettingsCard({ settings, onSaved }: { settings: NotificationSet
           placeholder="+60123456789, +6598765432"
         />
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        Uses Meta&apos;s WhatsApp Business Cloud API. One message is sent per recipient; if any recipient
-        fails, the whole attempt is logged as failed with the offending numbers.
-      </p>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Save WhatsApp Settings"}
-      </button>
-    </div>
+    </ChannelCard>
   );
 }
 
@@ -984,18 +975,22 @@ function DailyReportCard({ settings, onSaved }: { settings: NotificationSettings
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
-      <label className="mb-3 flex items-center gap-2 text-sm font-semibold">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-        Daily Report
-      </label>
+    <ChannelCard
+      title="Daily Report"
+      enabled={enabled}
+      onEnabledChange={setEnabled}
+      error={error}
+      saving={saving}
+      saveLabel="Save Report Schedule"
+      onSave={handleSave}
+    >
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">
           Send at
           <select
             value={hour}
             onChange={(e) => setHour(Number(e.target.value))}
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className={`${inputClass} w-36`}
           >
             {Array.from({ length: 24 }, (_, h) => (
               <option key={h} value={h}>
@@ -1004,23 +999,13 @@ function DailyReportCard({ settings, onSaved }: { settings: NotificationSettings
             ))}
           </select>
         </label>
-        <span className="text-xs text-zinc-500">
-          Last sent: {settings.daily_report_last_sent_date ?? "never"}
-        </span>
+        <span className="text-xs text-muted">Last sent: {settings.daily_report_last_sent_date ?? "never"}</span>
       </div>
-      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="mt-3 rounded-md bg-[#0b3d5c] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0a3450] disabled:opacity-50"
-      >
-        {saving ? "Saving…" : "Save Report Schedule"}
-      </button>
-    </div>
+    </ChannelCard>
   );
 }
 
-// Shared label+input row used by the three settings cards above.
+// Shared label+input row used by the channel cards above.
 function FieldRow({
   label,
   value,
@@ -1036,13 +1021,13 @@ function FieldRow({
 }) {
   return (
     <div>
-      <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</label>
+      <label className={labelClass}>{label}</label>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+        className={`${inputClass} mt-1 w-full`}
       />
     </div>
   );

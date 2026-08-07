@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import UserMenu from "@/app/components/UserMenu";
 import VesselTable from "@/app/components/VesselTable";
+import { EmptyState, ErrorBar, PageBanner, Panel, PanelHeader, Shell } from "@/app/components/ui";
 import { ApiError, downloadReportExcel, downloadReportPdf, getReportSummary, ReportSummary } from "@/lib/api";
 
 const REPORTS_REFRESH_MS = 5 * 60 * 1000;
@@ -52,77 +51,90 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">Reports</h1>
-            <p className="text-xs text-white/70">Active vessels · ETA to Destination · Arrived at Destination</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <UserMenu />
-            <Link
-              href="/"
-              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
+    <>
+      <PageBanner
+        title="Reports"
+        subtitle="Active vessels · ETA to Destination · Arrived at Destination"
+        actions={
+          <>
+            <button
+              onClick={() => handleExport("xlsx")}
+              disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-sm bg-white px-5 py-2.5 text-sm font-bold text-brand transition-colors hover:bg-brand-tint disabled:opacity-60"
             >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
+              {exporting === "xlsx" ? "Exporting…" : "Export to Excel"}
+            </button>
+            <button
+              onClick={() => handleExport("pdf")}
+              disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-sm border border-white/70 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/15 disabled:opacity-60"
+            >
+              {exporting === "pdf" ? "Exporting…" : "Export to PDF"}
+            </button>
+          </>
+        }
+      />
 
-        <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <button
-            onClick={() => handleExport("xlsx")}
-            disabled={exporting !== null}
-            className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642] disabled:opacity-50"
-          >
-            {exporting === "xlsx" ? "Exporting…" : "Export to Excel"}
-          </button>
-          <button
-            onClick={() => handleExport("pdf")}
-            disabled={exporting !== null}
-            className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            {exporting === "pdf" ? "Exporting…" : "Export to PDF"}
-          </button>
-          {exportError && <span className="text-sm text-red-600">{exportError}</span>}
-          {summary && (
-            <span className="ml-auto text-xs text-zinc-500">
-              Generated {new Date(summary.generated_at).toLocaleString()}
-            </span>
-          )}
-        </div>
-
+      <Shell className="space-y-5 py-7">
+        {exportError && (
+          <Panel>
+            <ErrorBar>{exportError}</ErrorBar>
+          </Panel>
+        )}
         {error && (
-          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
+          <Panel>
+            <ErrorBar>{error}</ErrorBar>
+          </Panel>
         )}
 
-        <div className="bg-white dark:bg-zinc-900">
-          {loading || !summary ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading report…</div>
-          ) : (
-            <>
-              <ReportSection title="Active Vessels" vessels={summary.active} />
-              <ReportSection title="ETA to Destination" vessels={summary.eta_to_destination} />
-              <ReportSection title="Arrived at Destination" vessels={summary.arrived_at_destination} />
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+        {loading || !summary ? (
+          <Panel>
+            <EmptyState>Loading report…</EmptyState>
+          </Panel>
+        ) : (
+          <>
+            {/* One panel per category rather than three sections stacked inside a single card -
+                each is a self-contained block in the same way the source site lays its content
+                out in separate modules. */}
+            <ReportSection
+              title="Active Vessels"
+              vessels={summary.active}
+              generatedAt={summary.generated_at}
+            />
+            <ReportSection title="ETA to Destination" vessels={summary.eta_to_destination} />
+            <ReportSection title="Arrived at Destination" vessels={summary.arrived_at_destination} />
+          </>
+        )}
+      </Shell>
+    </>
   );
 }
 
-function ReportSection({ title, vessels }: { title: string; vessels: ReportSummary["active"] }) {
+function ReportSection({
+  title,
+  vessels,
+  generatedAt,
+}: {
+  title: string;
+  vessels: ReportSummary["active"];
+  /** Only passed to the first section, so the "generated at" stamp appears once on the page
+   * rather than being repeated identically above all three tables. */
+  generatedAt?: string;
+}) {
   return (
-    <div className="border-b border-zinc-200 last:border-b-0 dark:border-zinc-800">
-      <h2 className="px-6 pt-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-        {title} ({vessels.length})
-      </h2>
+    <Panel>
+      <PanelHeader
+        title={`${title} (${vessels.length})`}
+        actions={
+          generatedAt && (
+            <span className="text-xs text-muted">Generated {new Date(generatedAt).toLocaleString()}</span>
+          )
+        }
+      />
       {/* Distinct from VesselTable's default "no vessels at all" message (which points at a
           "+ Add" button that doesn't even exist on this page) - an empty category here just
           means no vessel currently matches it, not that nothing is registered. */}
       <VesselTable vessels={vessels} emptyMessage="No vessels in this category right now." />
-    </div>
+    </Panel>
   );
 }

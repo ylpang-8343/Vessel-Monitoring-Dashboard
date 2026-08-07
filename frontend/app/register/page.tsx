@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ApiError, register } from "@/lib/api";
 import { useAuth } from "@/app/components/AuthProvider";
 import MicrosoftSignInButton from "@/app/components/MicrosoftSignInButton";
+import { Panel, PanelHeader, btnPrimary, inputClass, labelClass } from "@/app/components/ui";
 
 // Mirrors validate_password_complexity() in backend/app/schemas.py - kept as a separate literal
 // list (not shared code) so the checklist can render live per-rule feedback as the user types.
@@ -58,39 +59,36 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="bg-[#0b3d5c] px-6 py-4">
-          <h1 className="text-lg font-semibold text-white">Vessel Monitoring Dashboard</h1>
-          <p className="text-xs text-white/70">Create an account</p>
-        </div>
+    <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-5 py-12">
+      <Panel>
+        <PanelHeader title="Create Account" subtitle="Vessel Monitoring Dashboard" />
 
-        <form onSubmit={handleSubmit} className="space-y-4 bg-white px-6 py-6 dark:bg-zinc-900">
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-6">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Email</label>
+            <label className={labelClass}>Email</label>
             <input
               required
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className={`${inputClass} mt-1 w-full`}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Password</label>
+            <label className={labelClass}>Password</label>
             <input
               required
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className={`${inputClass} mt-1 w-full`}
             />
             <ul className="mt-2 space-y-0.5 text-xs">
               {RULES.map((rule) => {
                 const met = rule.test(password);
                 return (
-                  <li key={rule.label} className={met ? "text-green-600" : "text-zinc-400"}>
+                  <li key={rule.label} className={met ? "font-bold text-green-700" : "text-muted"}>
                     {met ? "✓" : "○"} {rule.label}
                   </li>
                 );
@@ -99,39 +97,33 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Confirm Password
-            </label>
+            <label className={labelClass}>Confirm Password</label>
             <input
               required
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+              className={`${inputClass} mt-1 w-full`}
             />
             {!passwordsMatch && <p className="mt-1 text-xs text-red-600">Passwords do not match</p>}
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642] disabled:opacity-50"
-          >
+          <button type="submit" disabled={submitting} className={`${btnPrimary} w-full`}>
             {submitting ? "Creating account…" : "Register"}
           </button>
 
           <MicrosoftSignInButton label="Sign up with Microsoft" />
 
-          <p className="text-center text-sm text-zinc-500">
+          <p className="text-center text-sm text-muted">
             Already have an account?{" "}
-            <Link href="/login" className="font-medium text-[#0b3d5c] underline dark:text-blue-400">
+            <Link href="/login" className="font-bold text-brand hover:underline">
               Log in
             </Link>
           </p>
         </form>
-      </div>
+      </Panel>
     </div>
   );
 }

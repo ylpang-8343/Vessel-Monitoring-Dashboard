@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getMicrosoftAuthStatus, microsoftLoginUrl } from "@/lib/api";
+import { btnSecondary } from "./ui";
 
 // "Sign in with Microsoft" / "Sign up with Microsoft" button, shared by the login and register
 // pages. Checks on mount whether the backend actually has an Azure app configured (Section 6's
@@ -29,10 +30,10 @@ export default function MicrosoftSignInButton({ label }: { label: string }) {
 
   return (
     <>
-      <div className="flex items-center gap-3 text-xs text-zinc-400">
-        <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+      <div className="flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-rule" />
         or
-        <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+        <span className="h-px flex-1 bg-rule" />
       </div>
       <button
         type="button"
@@ -40,7 +41,7 @@ export default function MicrosoftSignInButton({ label }: { label: string }) {
           // Full-page navigation, not a fetch - see lib/api.ts's microsoftLoginUrl().
           window.location.href = microsoftLoginUrl();
         }}
-        className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+        className={`${btnSecondary} w-full`}
       >
         <MicrosoftLogo />
         {label}

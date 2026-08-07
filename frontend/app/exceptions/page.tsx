@@ -1,10 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import UserMenu from "@/app/components/UserMenu";
 import ExceptionBadge, { exceptionMeta } from "@/app/components/ExceptionBadge";
+import {
+  Chip,
+  EmptyState,
+  ErrorBar,
+  NoticeBar,
+  PageBanner,
+  Panel,
+  PanelFooter,
+  Shell,
+  theadClass,
+} from "@/app/components/ui";
 import { ApiError, ExceptionKind, listExceptions, VesselException } from "@/lib/api";
 
 // Same auto-refresh cadence as the dashboard, for consistency across the app's live views.
@@ -45,115 +54,88 @@ export default function ExceptionsPage() {
   }, [refresh]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">Exception Alerts</h1>
-            <p className="text-xs text-white/70">Delays · Long port stays · Unexpected port calls</p>
+    <>
+      <PageBanner
+        title="Exception Alerts"
+        subtitle="Delays · Long port stays · Unexpected port calls"
+      />
+
+      <Shell className="py-7">
+        <Panel>
+          <NoticeBar>
+            Detection is rule-based, not model-guessed — every alert is arithmetic against a
+            source-reported ETA or a configured threshold, so you can check it against the vessel&apos;s own
+            timeline. Route-deviation alerts aren&apos;t included: detecting a deviation needs a planned
+            route to compare against, which neither this app nor AIS-style tracking data provides
+            (Section 3.10&apos;s reasoning).
+          </NoticeBar>
+
+          <div className="flex flex-wrap gap-2 border-b border-rule px-5 py-3">
+            <Chip active={kindFilter === null} onClick={() => setKindFilter(null)}>
+              All
+            </Chip>
+            {KIND_FILTERS.map((kind) => (
+              <Chip key={kind} active={kindFilter === kind} onClick={() => setKindFilter(kind)}>
+                <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${exceptionMeta(kind).dot}`} />
+                {exceptionMeta(kind).label}
+              </Chip>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            <UserMenu />
-            <Link
-              href="/"
-              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
 
-        <div className="bg-amber-50 px-6 py-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          Detection is rule-based, not model-guessed — every alert is arithmetic against a
-          source-reported ETA or a configured threshold, so you can check it against the vessel&apos;s own
-          timeline. Route-deviation alerts aren&apos;t included: detecting a deviation needs a planned
-          route to compare against, which neither this app nor AIS-style tracking data provides
-          (Section 3.10&apos;s reasoning).
-        </div>
+          {error && <ErrorBar>{error}</ErrorBar>}
 
-        <div className="flex flex-wrap gap-2 border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <FilterChip active={kindFilter === null} onClick={() => setKindFilter(null)}>
-            All
-          </FilterChip>
-          {KIND_FILTERS.map((kind) => (
-            <FilterChip key={kind} active={kindFilter === kind} onClick={() => setKindFilter(kind)}>
-              <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${exceptionMeta(kind).dot}`} />
-              {exceptionMeta(kind).label}
-            </FilterChip>
-          ))}
-        </div>
-
-        {error && (
-          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
-        )}
-
-        <div className="bg-white dark:bg-zinc-900">
           {loading ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading exceptions…</div>
+            <EmptyState>Loading exceptions…</EmptyState>
           ) : exceptions.length === 0 ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">
+            <EmptyState>
               No exceptions detected. Vessels are arriving within their reported ETAs and staying within
               the configured port-stay threshold.
-            </div>
+            </EmptyState>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                <tr>
-                  <th className="px-6 py-3">Detected</th>
-                  <th className="px-6 py-3">Vessel</th>
-                  <th className="px-6 py-3">Type</th>
-                  <th className="px-6 py-3">Detail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exceptions.map((exception) => (
-                  <tr
-                    key={exception.id}
-                    onClick={() => router.push(`/vessels/${exception.vessel_imo}`)}
-                    className="cursor-pointer border-b border-zinc-100 last:border-b-0 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-                  >
-                    <td className="whitespace-nowrap px-6 py-3 text-zinc-500">
-                      {new Date(exception.detected_at).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-3">
-                      <span className="font-medium">{exception.vessel_name}</span>
-                      <span className="ml-2 text-xs text-zinc-500">IMO {exception.vessel_imo}</span>
-                    </td>
-                    <td className="px-6 py-3">
-                      <ExceptionBadge kind={exception.kind} />
-                    </td>
-                    <td className="px-6 py-3">{exception.message}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-sm">
+                <thead className={theadClass}>
+                  <tr>
+                    <th className="px-5 py-3">Detected</th>
+                    <th className="px-5 py-3">Vessel</th>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Detail</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {exceptions.map((exception) => (
+                    <tr
+                      key={exception.id}
+                      onClick={() => router.push(`/vessels/${exception.vessel_imo}`)}
+                      className="cursor-pointer border-b border-rule last:border-b-0 hover:bg-brand-tint"
+                    >
+                      <td className="whitespace-nowrap px-5 py-3 text-muted">
+                        {new Date(exception.detected_at).toLocaleString()}
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="font-bold text-ink">{exception.vessel_name}</span>
+                        <span className="ml-2 text-xs text-muted">IMO {exception.vessel_imo}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <ExceptionBadge kind={exception.kind} />
+                      </td>
+                      <td className="px-5 py-3">{exception.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
 
-        <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-6 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-          <span>
-            Showing {exceptions.length} exception{exceptions.length === 1 ? "" : "s"} · Checked on every
-            tracking poll · Each distinct exception alerts once
-          </span>
-          <span>Click any row to open that vessel&apos;s history</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// One filter pill, matching the dashboard's chip styling (Section 6.D's pattern reused).
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
-        active
-          ? "border-[#0b3d5c] bg-[#0b3d5c] text-white"
-          : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-      }`}
-    >
-      {children}
-    </button>
+          <PanelFooter>
+            <span>
+              Showing {exceptions.length} exception{exceptions.length === 1 ? "" : "s"} · Checked on every
+              tracking poll · Each distinct exception alerts once
+            </span>
+            <span>Click any row to open that vessel&apos;s history</span>
+          </PanelFooter>
+        </Panel>
+      </Shell>
+    </>
   );
 }

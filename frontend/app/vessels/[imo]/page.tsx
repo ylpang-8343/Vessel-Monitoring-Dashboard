@@ -16,7 +16,17 @@ import {
 } from "@/lib/api";
 import StatusDot, { statusMeta } from "@/app/components/StatusDot";
 import ExceptionBadge from "@/app/components/ExceptionBadge";
-import UserMenu from "@/app/components/UserMenu";
+import {
+  EmptyState,
+  PageBanner,
+  Panel,
+  PanelHeader,
+  Shell,
+  Stat,
+  btnDanger,
+  btnSecondary,
+  btnSecondarySm,
+} from "@/app/components/ui";
 
 const HISTORY_REFRESH_MS = 30 * 1000;
 
@@ -99,17 +109,21 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
   }
 
   if (loading) {
-    return <div className="mx-auto max-w-4xl px-4 py-16 text-center text-sm text-zinc-500">Loading…</div>;
+    return (
+      <Shell className="py-20">
+        <p className="text-center text-sm text-muted">Loading…</p>
+      </Shell>
+    );
   }
 
   if (error || !history) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-16 text-center">
+      <Shell className="py-20 text-center">
         <p className="text-sm text-red-600">{error ?? "Vessel not found"}</p>
-        <Link href="/" className="mt-4 inline-block text-sm text-blue-600 underline">
+        <Link href="/" className="mt-4 inline-block text-sm font-bold text-brand hover:underline">
           Back to Dashboard
         </Link>
-      </div>
+      </Shell>
     );
   }
 
@@ -123,92 +137,86 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
   const latestMeta = statusMeta(vessel.last_event_type);
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">{vessel.name} — Vessel History</h1>
-            <p className="text-xs text-white/70">
-              IMO {vessel.imo_number} · Data source: {vessel.source_name ?? "—"}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <UserMenu />
-            <Link
-              href="/"
-              className="rounded-md bg-white/10 px-3 py-1.5 text-sm font-medium text-white hover:bg-white/20"
-            >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
+    <>
+      <PageBanner
+        title={vessel.name}
+        subtitle={`IMO ${vessel.imo_number} · Data source: ${vessel.source_name ?? "—"}`}
+      />
 
-        <div className="grid grid-cols-2 gap-6 border-b border-zinc-200 bg-white px-6 py-4 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <Stat label="Current Status">
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${latestMeta.chipBg} ${latestMeta.chipText}`}
-            >
-              <StatusDot eventType={vessel.last_event_type} />
-              {latestMeta.label}
-            </span>
-          </Stat>
-          <Stat label="Destination">{vessel.destination_port ?? "Not set"}</Stat>
-          <Stat label="Last Updated">
-            {vessel.last_event_at ? new Date(vessel.last_event_at).toLocaleString() : "—"}
-          </Stat>
-          <Stat label="Current Location">{vessel.current_location ?? "—"}</Stat>
-        </div>
+      <Shell className="space-y-5 py-7">
+        <Panel>
+          <div className="grid grid-cols-2 gap-6 px-5 py-4 sm:grid-cols-4">
+            <Stat label="Current Status">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-bold ${latestMeta.chipBg} ${latestMeta.chipText}`}
+              >
+                <StatusDot eventType={vessel.last_event_type} />
+                {latestMeta.label}
+              </span>
+            </Stat>
+            <Stat label="Destination">{vessel.destination_port ?? "Not set"}</Stat>
+            <Stat label="Last Updated">
+              {vessel.last_event_at ? new Date(vessel.last_event_at).toLocaleString() : "—"}
+            </Stat>
+            <Stat label="Current Location">{vessel.current_location ?? "—"}</Stat>
+          </div>
+        </Panel>
 
         {/* Phase 6 (Section 7). Each panel renders only when it has something real to say -
             an exception list with no exceptions, or a prediction with no history behind it,
             would be noise rather than information. */}
         {exceptions.length > 0 && (
-          <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <h2 className="mb-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-              Exception Alerts ({exceptionCount})
-            </h2>
-            <ul className="space-y-2">
-              {exceptions.map((exception) => (
-                <li key={exception.id} className="flex flex-wrap items-center gap-3 text-sm">
-                  <ExceptionBadge kind={exception.kind} />
-                  <span>{exception.message}</span>
-                  <span className="text-xs text-zinc-500">
-                    detected {new Date(exception.detected_at).toLocaleString()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {/* A repeatedly-late vessel accrues one exception per voyage, so the panel shows the
-                current picture and points at the full list rather than growing without bound. */}
-            {exceptionCount > exceptions.length && (
-              <p className="mt-3 text-xs text-zinc-500">
-                Showing the {exceptions.length} most recent of {exceptionCount}.{" "}
-                <Link href="/exceptions" className="text-blue-600 underline">
-                  See all exceptions
-                </Link>
-                .
-              </p>
-            )}
-          </div>
+          <Panel>
+            <PanelHeader title={`Exception Alerts (${exceptionCount})`} />
+            <div className="px-5 py-4">
+              <ul className="space-y-2.5">
+                {exceptions.map((exception) => (
+                  <li key={exception.id} className="flex flex-wrap items-center gap-3 text-sm">
+                    <ExceptionBadge kind={exception.kind} />
+                    <span>{exception.message}</span>
+                    <span className="text-xs text-muted">
+                      detected {new Date(exception.detected_at).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {/* A repeatedly-late vessel accrues one exception per voyage, so the panel shows the
+                  current picture and points at the full list rather than growing without bound. */}
+              {exceptionCount > exceptions.length && (
+                <p className="mt-3 text-xs text-muted">
+                  Showing the {exceptions.length} most recent of {exceptionCount}.{" "}
+                  <Link href="/exceptions" className="font-bold text-brand hover:underline">
+                    See all exceptions
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          </Panel>
         )}
 
         {predictedEta && (
-          <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-            <h2 className="mb-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Predicted Arrival</h2>
-            <p className="text-sm">
-              <span className="font-medium">{new Date(predictedEta.predicted_arrival).toLocaleString()}</span>{" "}
-              at {vessel.destination_port}
-            </p>
-            {/* The evidence, stated plainly - a prediction from one prior voyage should read
-                differently from one backed by a dozen, so the sample size is always shown. */}
-            <p className="mt-1 text-xs text-zinc-500">
-              Based on {predictedEta.sample_size} previously completed voyage
-              {predictedEta.sample_size === 1 ? "" : "s"} on this route, which took a median of{" "}
-              {formatDuration(predictedEta.typical_duration_hours)}. Departed {predictedEta.departed_from} on{" "}
-              {new Date(predictedEta.departed_at).toLocaleString()}. Derived from this vessel&apos;s own
-              history — not from speed or route data, which this app&apos;s tracking sources don&apos;t provide.
-            </p>
-          </div>
+          <Panel>
+            <PanelHeader title="Predicted Arrival" />
+            <div className="px-5 py-4">
+              <p className="text-sm">
+                <span className="font-bold text-ink">
+                  {new Date(predictedEta.predicted_arrival).toLocaleString()}
+                </span>{" "}
+                at {vessel.destination_port}
+              </p>
+              {/* The evidence, stated plainly - a prediction from one prior voyage should read
+                  differently from one backed by a dozen, so the sample size is always shown. */}
+              <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                Based on {predictedEta.sample_size} previously completed voyage
+                {predictedEta.sample_size === 1 ? "" : "s"} on this route, which took a median of{" "}
+                {formatDuration(predictedEta.typical_duration_hours)}. Departed {predictedEta.departed_from}{" "}
+                on {new Date(predictedEta.departed_at).toLocaleString()}. Derived from this vessel&apos;s own
+                history — not from speed or route data, which this app&apos;s tracking sources don&apos;t
+                provide.
+              </p>
+            </div>
+          </Panel>
         )}
 
         <VoyageSummaryPanel
@@ -219,82 +227,81 @@ export default function VesselHistoryPage({ params }: { params: Promise<{ imo: s
           onGenerated={setSummary}
         />
 
-        <div className="bg-white px-6 py-6 dark:bg-zinc-900">
-          <h2 className="mb-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Movement Timeline</h2>
+        <Panel>
+          <PanelHeader title="Movement Timeline" />
           {timeline.length === 0 ? (
-            <p className="text-sm text-zinc-500">
-              No tracking updates yet — the tracking worker polls periodically and will populate this timeline
-              automatically.
-            </p>
+            <EmptyState>
+              No tracking updates yet — the tracking worker polls periodically and will populate this
+              timeline automatically.
+            </EmptyState>
           ) : (
-            <ol className="relative border-l border-zinc-200 pl-6 dark:border-zinc-700">
-              {[...timeline].reverse().map((event) => {
-                const meta = statusMeta(event.event_type);
-                return (
-                  <li key={event.id} className="mb-6 last:mb-0">
-                    <span
-                      className={`absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full ${meta.dot}`}
-                      aria-hidden
-                    />
-                    <p className="text-sm font-medium">{event.last_event_text}</p>
-                    <p className="text-xs text-zinc-500">
-                      {new Date(event.occurred_at).toLocaleString()} · {event.source_name}
-                      {/* The ETA the source reported at this event (Section 3.3's captured
-                          field). Shown inline so a delay alert can be checked against the
-                          timeline it was derived from. */}
-                      {event.eta && <> · ETA reported: {new Date(event.eta).toLocaleString()}</>}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
-
-        <div className="border-t border-zinc-200 bg-zinc-50 px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-          {actionError && <p className="mb-3 text-sm text-red-600">{actionError}</p>}
-
-          {vessel.archived_at ? (
-            <p className="text-xs text-zinc-500">
-              Archived on {new Date(vessel.archived_at).toLocaleString()} · History stays available for reference
-            </p>
-          ) : confirming === "archive" ? (
-            <ConfirmBar
-              message="Archive this vessel? It will move to the Archived view; history is kept."
-              confirmLabel="Archive"
-              confirmClassName="bg-[#0b3d5c] hover:bg-[#0a3450]"
-              busy={actioning}
-              onConfirm={handleArchive}
-              onCancel={() => setConfirming(null)}
-            />
-          ) : confirming === "remove" ? (
-            <ConfirmBar
-              message="Remove this vessel? This permanently deletes it and its history — this cannot be undone."
-              confirmLabel="Remove"
-              confirmClassName="bg-red-600 hover:bg-red-700"
-              busy={actioning}
-              onConfirm={handleRemove}
-              onCancel={() => setConfirming(null)}
-            />
-          ) : (
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirming("archive")}
-                className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
-              >
-                Archive
-              </button>
-              <button
-                onClick={() => setConfirming("remove")}
-                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-              >
-                Remove
-              </button>
+            <div className="px-5 py-6">
+              <ol className="relative border-l-2 border-rule pl-6">
+                {[...timeline].reverse().map((event) => {
+                  const meta = statusMeta(event.event_type);
+                  return (
+                    <li key={event.id} className="mb-6 last:mb-0">
+                      <span
+                        className={`absolute -left-[7px] mt-1.5 h-3 w-3 rounded-full border-2 border-white ${meta.dot}`}
+                        aria-hidden
+                      />
+                      <p className="text-sm font-bold text-ink">{event.last_event_text}</p>
+                      <p className="text-xs text-muted">
+                        {new Date(event.occurred_at).toLocaleString()} · {event.source_name}
+                        {/* The ETA the source reported at this event (Section 3.3's captured
+                            field). Shown inline so a delay alert can be checked against the
+                            timeline it was derived from. */}
+                        {event.eta && <> · ETA reported: {new Date(event.eta).toLocaleString()}</>}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </Panel>
+
+        <Panel>
+          <div className="px-5 py-4">
+            {actionError && <p className="mb-3 text-sm text-red-600">{actionError}</p>}
+
+            {vessel.archived_at ? (
+              <p className="text-xs text-muted">
+                Archived on {new Date(vessel.archived_at).toLocaleString()} · History stays available for
+                reference
+              </p>
+            ) : confirming === "archive" ? (
+              <ConfirmBar
+                message="Archive this vessel? It will move to the Archived view; history is kept."
+                confirmLabel="Archive"
+                confirmClassName="bg-brand hover:bg-brand-dark"
+                busy={actioning}
+                onConfirm={handleArchive}
+                onCancel={() => setConfirming(null)}
+              />
+            ) : confirming === "remove" ? (
+              <ConfirmBar
+                message="Remove this vessel? This permanently deletes it and its history — this cannot be undone."
+                confirmLabel="Remove"
+                confirmClassName="bg-red-600 hover:bg-red-700"
+                busy={actioning}
+                onConfirm={handleRemove}
+                onCancel={() => setConfirming(null)}
+              />
+            ) : (
+              <div className="flex gap-3">
+                <button onClick={() => setConfirming("archive")} className={btnSecondary}>
+                  Archive
+                </button>
+                <button onClick={() => setConfirming("remove")} className={btnDanger}>
+                  Remove
+                </button>
+              </div>
+            )}
+          </div>
+        </Panel>
+      </Shell>
+    </>
   );
 }
 
@@ -343,55 +350,54 @@ function VoyageSummaryPanel({
   }
 
   return (
-    <div className="border-b border-zinc-200 bg-white px-6 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">AI Voyage Summary</h2>
-        {/* Hidden entirely when unconfigured rather than shown-but-failing, matching how the
-            Microsoft sign-in button and PDF bulk upload behave without their credentials. */}
-        {configured && hasEvents && (
-          <button
-            onClick={handleGenerate}
-            disabled={generating}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            {generating ? "Generating…" : summary ? "Regenerate" : "Generate AI Summary"}
-          </button>
+    <Panel>
+      <PanelHeader
+        title="AI Voyage Summary"
+        actions={
+          // Hidden entirely when unconfigured rather than shown-but-failing, matching how the
+          // Microsoft sign-in button and PDF bulk upload behave without their credentials.
+          configured &&
+          hasEvents && (
+            <button onClick={handleGenerate} disabled={generating} className={btnSecondarySm}>
+              {generating ? "Generating…" : summary ? "Regenerate" : "Generate AI Summary"}
+            </button>
+          )
+        }
+      />
+
+      <div className="px-5 py-4">
+        {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+
+        {!configured ? (
+          <p className="text-sm text-muted">
+            Unavailable — no <code>ANTHROPIC_API_KEY</code> is configured on the backend. Everything else on
+            this page works regardless.
+          </p>
+        ) : !hasEvents ? (
+          <p className="text-sm text-muted">Nothing to summarise yet — this vessel has no tracking events.</p>
+        ) : summary ? (
+          <>
+            <p className="text-sm leading-relaxed">{summary.summary}</p>
+            <p className="mt-2 text-xs text-muted">
+              Generated {new Date(summary.generated_at).toLocaleString()} from {summary.source_event_count}{" "}
+              event{summary.source_event_count === 1 ? "" : "s"}
+              {/* A cached summary written before newer events landed is visibly out of date
+                  rather than quietly wrong. */}
+              {summary.is_stale && (
+                <span className="ml-2 rounded-sm bg-amber-50 px-1.5 py-0.5 font-bold text-amber-700">
+                  New events since — regenerate to update
+                </span>
+              )}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted">
+            No summary generated yet. Written from this vessel&apos;s recorded events only — it never adds
+            facts the timeline doesn&apos;t contain.
+          </p>
         )}
       </div>
-
-      {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
-
-      {!configured ? (
-        <p className="text-sm text-zinc-500">
-          Unavailable — no <code>ANTHROPIC_API_KEY</code> is configured on the backend. Everything else on
-          this page works regardless.
-        </p>
-      ) : !hasEvents ? (
-        <p className="text-sm text-zinc-500">
-          Nothing to summarise yet — this vessel has no tracking events.
-        </p>
-      ) : summary ? (
-        <>
-          <p className="text-sm leading-relaxed">{summary.summary}</p>
-          <p className="mt-2 text-xs text-zinc-500">
-            Generated {new Date(summary.generated_at).toLocaleString()} from {summary.source_event_count} event
-            {summary.source_event_count === 1 ? "" : "s"}
-            {/* A cached summary written before newer events landed is visibly out of date
-                rather than quietly wrong. */}
-            {summary.is_stale && (
-              <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                New events since — regenerate to update
-              </span>
-            )}
-          </p>
-        </>
-      ) : (
-        <p className="text-sm text-zinc-500">
-          No summary generated yet. Written from this vessel&apos;s recorded events only — it never adds
-          facts the timeline doesn&apos;t contain.
-        </p>
-      )}
-    </div>
+    </Panel>
   );
 }
 
@@ -417,31 +423,17 @@ function ConfirmBar({
     <div className="flex flex-wrap items-center gap-3">
       <p className="text-sm">{message}</p>
       <div className="ml-auto flex gap-2">
-        <button
-          onClick={onCancel}
-          disabled={busy}
-          className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
-        >
+        <button onClick={onCancel} disabled={busy} className={btnSecondarySm}>
           Cancel
         </button>
         <button
           onClick={onConfirm}
           disabled={busy}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 ${confirmClassName}`}
+          className={`inline-flex items-center justify-center rounded-sm px-3 py-1.5 text-xs font-bold text-white transition-colors disabled:opacity-50 ${confirmClassName}`}
         >
           {busy ? "Working…" : confirmLabel}
         </button>
       </div>
-    </div>
-  );
-}
-
-// One label/value pair in the header's stat grid (Current Status, Destination, etc.).
-function Stat({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
-      <div className="mt-1 text-sm font-medium">{children}</div>
     </div>
   );
 }

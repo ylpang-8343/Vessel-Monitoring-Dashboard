@@ -7,23 +7,18 @@ import type { ExceptionKind } from "@/lib/api";
 // Same single-source-of-truth shape as StatusDot's COLOURS map, so exception styling stays
 // consistent wherever it appears (the Exceptions page, the vessel history panel, the dashboard).
 const STYLES: Record<ExceptionKind, { label: string; dot: string; chipBg: string; chipText: string }> = {
-  delayed: {
-    label: "Delayed",
-    dot: "bg-red-500",
-    chipBg: "bg-red-50 dark:bg-red-950",
-    chipText: "text-red-700 dark:text-red-300",
-  },
+  delayed: { label: "Delayed", dot: "bg-red-500", chipBg: "bg-red-50", chipText: "text-red-700" },
   long_port_stay: {
     label: "Long Port Stay",
     dot: "bg-amber-500",
-    chipBg: "bg-amber-50 dark:bg-amber-950",
-    chipText: "text-amber-700 dark:text-amber-300",
+    chipBg: "bg-amber-50",
+    chipText: "text-amber-700",
   },
   unexpected_port_call: {
     label: "Unexpected Port Call",
     dot: "bg-purple-500",
-    chipBg: "bg-purple-50 dark:bg-purple-950",
-    chipText: "text-purple-700 dark:text-purple-300",
+    chipBg: "bg-purple-50",
+    chipText: "text-purple-700",
   },
 };
 
@@ -38,7 +33,7 @@ export default function ExceptionBadge({ kind }: { kind: ExceptionKind }) {
   const meta = exceptionMeta(kind);
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${meta.chipBg} ${meta.chipText}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 py-1 text-xs font-bold ${meta.chipBg} ${meta.chipText}`}
     >
       <span className={`inline-block h-2 w-2 rounded-full ${meta.dot}`} />
       {meta.label}

@@ -1,17 +1,7 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import AppChrome from "./components/AppChrome";
 import AuthProvider from "./components/AuthProvider";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Vessel Monitoring Dashboard",
@@ -20,19 +10,22 @@ export const metadata: Metadata = {
 
 // Root layout shared by every route (Next.js App Router convention). Wrapping everything in
 // AuthProvider here - rather than per-page - is what makes the whole app require login by
-// default, with each page only needing to worry about its own content.
+// default; AppChrome inside it supplies the shared header, navigation and footer, so each page
+// only needs to worry about its own content.
+//
+// No webfont is loaded: the house style follows mewahgroup.com's own Arial/Verdana stack (set in
+// globals.css), which also means no font request on first paint.
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+    <html lang="en" className="h-full antialiased">
+      <body className="flex min-h-full flex-col">
+        <AuthProvider>
+          <AppChrome>{children}</AppChrome>
+        </AuthProvider>
       </body>
     </html>
   );

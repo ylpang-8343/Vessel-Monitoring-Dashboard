@@ -1,12 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import AddBookingModal from "@/app/components/AddBookingModal";
 import BookingTable from "@/app/components/BookingTable";
-import UserMenu from "@/app/components/UserMenu";
-import { useAuth } from "@/app/components/AuthProvider";
 import { bookingStatusMeta } from "@/app/components/BookingStatusDot";
+import {
+  Chip,
+  EmptyState,
+  ErrorBar,
+  PageBanner,
+  Panel,
+  PanelFooter,
+  Shell,
+  TabButton,
+  inputClass,
+} from "@/app/components/ui";
 import { ApiError, Booking, BookingStatus, listBookings } from "@/lib/api";
 
 // Same auto-refresh cadence as the vessel dashboard (Section 3.4's "Auto-refreshed every 5
@@ -31,7 +39,6 @@ const STATUS_FILTERS: { value: BookingStatus; label: string }[] = [
 // the main vessel dashboard per the proposal's own wording: Active/Archived tabs, free-text
 // search, status filter chips, and the booking table, all driven by one refresh() call.
 export default function ContainersPage() {
-  const { user } = useAuth();
   const [view, setView] = useState<View>("active");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [search, setSearch] = useState("");
@@ -72,128 +79,78 @@ export default function ContainersPage() {
   }, [refresh]);
 
   return (
-    <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-      <div className="overflow-hidden rounded-lg border border-zinc-200 shadow-sm dark:border-zinc-800">
-        <div className="flex items-center justify-between bg-[#0b3d5c] px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-white">Container / Booking Tracking</h1>
-            <p className="text-xs text-white/70">Companion Module · Cargo movement status</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <UserMenu />
-            <Link href="/" className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20">
-              Vessel Dashboard
-            </Link>
-            {user?.role === "admin" && (
-              <Link
-                href="/settings"
-                className="rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white hover:bg-white/20"
-              >
-                Settings
-              </Link>
-            )}
-            {view === "active" && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="rounded-md bg-[#1f8a4c] px-4 py-2 text-sm font-medium text-white hover:bg-[#1a7642]"
-              >
-                + Add
-              </button>
-            )}
-          </div>
-        </div>
+    <>
+      <PageBanner
+        title="Container / Booking Tracking"
+        subtitle="Companion module · Cargo movement status across carrier booking records"
+        actions={
+          view === "active" && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-2 rounded-sm bg-white px-5 py-2.5 text-sm font-bold text-brand transition-colors hover:bg-brand-tint"
+            >
+              + Add Booking
+            </button>
+          )
+        }
+      />
 
-        <div className="flex items-center justify-between gap-4 border-b border-zinc-200 bg-white px-6 pt-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex gap-2">
-            <ViewTab active={view === "active"} onClick={() => setView("active")}>
-              Active
-            </ViewTab>
-            <ViewTab active={view === "archived"} onClick={() => setView("archived")}>
-              Archived
-            </ViewTab>
+      <Shell className="py-7">
+        <Panel>
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-rule px-5 pt-1">
+            <div className="flex">
+              <TabButton active={view === "active"} onClick={() => setView("active")}>
+                Active
+              </TabButton>
+              <TabButton active={view === "archived"} onClick={() => setView("archived")}>
+                Archived
+              </TabButton>
+            </div>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search container / booking no…"
+              className={`${inputClass} mb-2 w-72`}
+            />
           </div>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search container / booking no…"
-            className="mb-2 w-64 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-          />
-        </div>
 
-        {view === "active" && (
-          <div className="flex flex-wrap gap-2 border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-            <FilterChip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
-              All
-            </FilterChip>
-            {STATUS_FILTERS.map(({ value, label }) => (
-              <FilterChip key={value} active={statusFilter === value} onClick={() => setStatusFilter(value)}>
-                <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${bookingStatusMeta(value).dot}`} />
-                {label}
-              </FilterChip>
-            ))}
-          </div>
-        )}
-
-        {error && (
-          <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-800">{error}</div>
-        )}
-
-        <div className="bg-white dark:bg-zinc-900">
-          {loading ? (
-            <div className="px-6 py-16 text-center text-sm text-zinc-500">Loading bookings…</div>
-          ) : (
-            <BookingTable bookings={bookings} />
+          {view === "active" && (
+            <div className="flex flex-wrap gap-2 border-b border-rule px-5 py-3">
+              <Chip active={statusFilter === null} onClick={() => setStatusFilter(null)}>
+                All
+              </Chip>
+              {STATUS_FILTERS.map(({ value, label }) => (
+                <Chip key={value} active={statusFilter === value} onClick={() => setStatusFilter(value)}>
+                  <span className={`mr-1.5 inline-block h-2 w-2 rounded-full ${bookingStatusMeta(value).dot}`} />
+                  {label}
+                </Chip>
+              ))}
+            </div>
           )}
-        </div>
 
-        <div className="flex items-center justify-between border-t border-zinc-200 bg-zinc-50 px-6 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-          {view === "active" ? (
-            <span>
-              Showing {bookings.length} tracked booking{bookings.length === 1 ? "" : "s"}/container
-              {bookings.length === 1 ? "" : "s"} · Current Location and Last Event sourced from carrier booking
-              records, not vessel position data
-            </span>
-          ) : (
-            <span>
-              Showing {bookings.length} archived booking{bookings.length === 1 ? "" : "s"} · History stays
-              available for reference
-            </span>
-          )}
-          <span>Click any row to open its full movement history and timeline</span>
-        </div>
-      </div>
+          {error && <ErrorBar>{error}</ErrorBar>}
+
+          {loading ? <EmptyState>Loading bookings…</EmptyState> : <BookingTable bookings={bookings} />}
+
+          <PanelFooter>
+            {view === "active" ? (
+              <span>
+                Showing {bookings.length} tracked booking{bookings.length === 1 ? "" : "s"}/container
+                {bookings.length === 1 ? "" : "s"} · Current Location and Last Event sourced from carrier
+                booking records, not vessel position data
+              </span>
+            ) : (
+              <span>
+                Showing {bookings.length} archived booking{bookings.length === 1 ? "" : "s"} · History stays
+                available for reference
+              </span>
+            )}
+            <span>Click any row to open its full movement history and timeline</span>
+          </PanelFooter>
+        </Panel>
+      </Shell>
 
       {showAddModal && <AddBookingModal onClose={() => setShowAddModal(false)} onImported={refresh} />}
-    </div>
-  );
-}
-
-function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-t-md px-4 py-2 text-sm font-medium ${
-        active
-          ? "border-b-2 border-[#0b3d5c] text-[#0b3d5c] dark:text-white"
-          : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${
-        active
-          ? "border-[#0b3d5c] bg-[#0b3d5c] text-white"
-          : "border-zinc-300 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-      }`}
-    >
-      {children}
-    </button>
+    </>
   );
 }
